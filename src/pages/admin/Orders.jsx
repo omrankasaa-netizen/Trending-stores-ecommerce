@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search, Filter } from "lucide-react";
+import { Search } from "lucide-react";
 
 const STATUS_CONFIG = {
   pending:    { label: "في الانتظار",  color: "bg-yellow-100 text-yellow-800" },
@@ -18,8 +16,7 @@ const STATUS_CONFIG = {
 };
 
 function formatPrice(p) {
-  if (!p) return "$0";
-  return p >= 1000 ? `$${(p / 1000).toFixed(0)}` : `$${p}`;
+  return `$${(Number(p) || 0).toLocaleString("en-US")}`;
 }
 
 function formatDate(d) {

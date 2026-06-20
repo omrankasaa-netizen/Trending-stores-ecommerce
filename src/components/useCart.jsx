@@ -1,40 +1,61 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+
+const CART_KEY = "ts_cart";
+
+function readCart() {
+  try { return JSON.parse(localStorage.getItem(CART_KEY) || "[]"); } catch { return []; }
+}
 
 export function useCart() {
-  const [cart, setCart] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ts_cart") || "[]"); } catch { return []; }
-  });
+  const [cart, setCart] = useState(readCart);
 
-  const saveCart = (newCart) => {
-    localStorage.setItem("ts_cart", JSON.stringify(newCart));
+  // Keep every useCart() instance in sync: re-read on our custom event (same
+  // tab) and on the native storage event (other tabs). This is what makes the
+  // header cart count update the moment any component mutates the cart.
+  useEffect(() => {
+    const sync = () => setCart(readCart());
+    window.addEventListener("cart-update", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("cart-update", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  const saveCart = useCallback((newCart) => {
+    localStorage.setItem(CART_KEY, JSON.stringify(newCart));
     setCart(newCart);
     window.dispatchEvent(new Event("cart-update"));
-  };
+  }, []);
 
-  const addToCart = (product, qty = 1) => {
-    const existing = cart.find(i => i.product_id === product.id);
+  const addToCart = useCallback((product, qty = 1) => {
+    const current = readCart();
+    const existing = current.find(i => i.product_id === product.id);
     if (existing) {
-      saveCart(cart.map(i => i.product_id === product.id ? { ...i, quantity: i.quantity + qty } : i));
+      saveCart(current.map(i => i.product_id === product.id ? { ...i, quantity: i.quantity + qty } : i));
     } else {
-      saveCart([...cart, {
+      saveCart([...current, {
         product_id: product.id,
         product_name: product.name,
         product_name_ar: product.name_ar,
         price: product.price,
+        compare_at_price: product.compare_at_price,
         image_url: product.image_url,
-        quantity: qty
+        quantity: qty,
       }]);
     }
-  };
+  }, [saveCart]);
 
-  const removeFromCart = (productId) => saveCart(cart.filter(i => i.product_id !== productId));
+  const removeFromCart = useCallback((productId) => {
+    saveCart(readCart().filter(i => i.product_id !== productId));
+  }, [saveCart]);
 
-  const updateQty = (productId, qty) => {
+  const updateQty = useCallback((productId, qty) => {
     if (qty < 1) return removeFromCart(productId);
-    saveCart(cart.map(i => i.product_id === productId ? { ...i, quantity: qty } : i));
-  };
+    saveCart(readCart().map(i => i.product_id === productId ? { ...i, quantity: qty } : i));
+  }, [saveCart, removeFromCart]);
 
-  const clearCart = () => saveCart([]);
+  const clearCart = useCallback(() => saveCart([]), [saveCart]);
 
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
   const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);

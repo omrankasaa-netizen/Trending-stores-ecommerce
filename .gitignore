@@ -16,6 +16,14 @@ dist
 dist-ssr
 *.local
 
+# Self-hosted runtime artifacts
+data.db
+data.db-*
+*.sqlite
+*.sqlite3
+/uploads/*
+!/uploads/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

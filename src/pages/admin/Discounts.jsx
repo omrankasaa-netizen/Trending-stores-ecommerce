@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-import { Tag, Plus, Trash2, Percent } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import { formatPrice } from "@/lib/utils";
 
 export default function AdminDiscounts() {
   const [products, setProducts] = useState([]);
@@ -19,22 +20,18 @@ export default function AdminDiscounts() {
   const [applying, setApplying] = useState(false);
   const { toast } = useToast();
 
-  // Coupon state
-  const [coupons, setCoupons] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ts_coupons") || "[]"); } catch { return []; }
-  });
+  // Coupons are stored as a real backend entity so they can be validated at checkout.
+  const [coupons, setCoupons] = useState([]);
   const [couponForm, setCouponForm] = useState({ code: "", type: "percent", value: "", min_order: "", usage_limit: "", expiry: "", active: true });
+
+  const loadCoupons = () => base44.entities.Coupon.list("-created_date", 200).then(setCoupons).catch(() => setCoupons([]));
 
   useEffect(() => {
     base44.entities.Product.list("-created_date", 200).then(setProducts).finally(() => setLoading(false));
+    loadCoupons();
   }, []);
 
-  const saveCoupons = (list) => {
-    setCoupons(list);
-    localStorage.setItem("ts_coupons", JSON.stringify(list));
-  };
-
-  const fmt = v => v >= 1000 ? `$${(v/1000).toFixed(0)}` : `$${v}`;
+  const fmt = formatPrice;
 
   const applyBulkDiscount = async () => {
     if (!discountValue || selectedProducts.length === 0) {
@@ -49,7 +46,7 @@ export default function AdminDiscounts() {
         const newPrice = Math.round(currentPrice * (1 - Number(discountValue) / 100));
         await base44.entities.Product.update(id, { price: newPrice, compare_at_price: currentPrice });
       } else {
-        const newPrice = Math.max(0, currentPrice - Number(discountValue) * 1000);
+        const newPrice = Math.max(0, currentPrice - Number(discountValue));
         await base44.entities.Product.update(id, { price: newPrice, compare_at_price: currentPrice });
       }
     }
@@ -67,21 +64,32 @@ export default function AdminDiscounts() {
     toast({ title: "تم إزالة الخصم" });
   };
 
-  const addCoupon = () => {
+  const addCoupon = async () => {
     if (!couponForm.code || !couponForm.value) { toast({ title: "أدخل الكود والقيمة", variant: "destructive" }); return; }
-    const newCoupon = { ...couponForm, id: Date.now().toString(), code: couponForm.code.toUpperCase() };
-    saveCoupons([...coupons, newCoupon]);
+    await base44.entities.Coupon.create({
+      code: couponForm.code.toUpperCase(),
+      type: couponForm.type,
+      value: Number(couponForm.value),
+      min_order: couponForm.min_order ? Number(couponForm.min_order) : 0,
+      usage_limit: couponForm.usage_limit ? Number(couponForm.usage_limit) : 0,
+      usage_count: 0,
+      expiry: couponForm.expiry || null,
+      active: couponForm.active,
+    });
+    await loadCoupons();
     setCouponForm({ code: "", type: "percent", value: "", min_order: "", usage_limit: "", expiry: "", active: true });
     toast({ title: "✅ تم إضافة الكوبون" });
   };
 
-  const deleteCoupon = (id) => {
+  const deleteCoupon = async (id) => {
     if (!confirm("هل تريد حذف هذا الكوبون؟")) return;
-    saveCoupons(coupons.filter(c => c.id !== id));
+    await base44.entities.Coupon.delete(id);
+    await loadCoupons();
   };
 
-  const toggleCoupon = (id) => {
-    saveCoupons(coupons.map(c => c.id === id ? { ...c, active: !c.active } : c));
+  const toggleCoupon = async (c) => {
+    await base44.entities.Coupon.update(c.id, { active: !c.active });
+    await loadCoupons();
   };
 
   const discountedProducts = products.filter(p => p.compare_at_price && p.compare_at_price > p.price);
@@ -254,7 +262,7 @@ export default function AdminDiscounts() {
                             {c.expiry && ` · ينتهي ${c.expiry}`}
                           </div>
                         </div>
-                        <Switch checked={!!c.active} onCheckedChange={() => toggleCoupon(c.id)} />
+                        <Switch checked={!!c.active} onCheckedChange={() => toggleCoupon(c)} />
                         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => deleteCoupon(c.id)}>
                           <Trash2 className="w-4 h-4" />
                         </Button>

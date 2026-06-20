@@ -1,5 +1,4 @@
 import React from "react";
-import { Icon } from 'lucide-react';
 
 export default function AuthLayout({ icon: Icon, title, subtitle, footer, children }) {
   return (

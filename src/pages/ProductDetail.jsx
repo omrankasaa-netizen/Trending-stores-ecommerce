@@ -8,12 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { MessageCircle, ShoppingCart, Truck, Shield, RotateCcw, ChevronRight, Plus, Minus, Play } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { formatPrice } from "@/lib/utils";
 
 const WHATSAPP = "96181751841";
-
-function formatPrice(p) {
-  return p >= 1000 ? `$${(p / 1000).toFixed(0)}` : `$${p}`;
-}
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -55,6 +52,7 @@ export default function ProductDetail() {
   const desc = isRTL ? (product.short_description_ar || product.short_description) : product.short_description;
   const discount = product.compare_at_price && product.compare_at_price > product.price
     ? Math.round((1 - product.price / product.compare_at_price) * 100) : null;
+  const outOfStock = Number(product.stock_quantity) <= 0;
 
   const whatsappMsg = isRTL
     ? `مرحبا، أريد الطلب: ${name} (الكمية: ${qty}) - السعر: ${formatPrice(product.price * qty)}`
@@ -151,6 +149,12 @@ export default function ProductDetail() {
               {discount && <span className="text-red-500 font-bold text-lg">{t(`Save ${discount}%`, `وفر ${discount}%`)}</span>}
             </div>
 
+            {outOfStock && (
+              <div className="px-4 py-3 rounded-2xl bg-red-50 border border-red-200 text-red-600 font-bold text-sm" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                {t("Currently out of stock", "هذا المنتج غير متوفر حالياً")}
+              </div>
+            )}
+
             <Separator />
 
             {/* Qty */}
@@ -171,19 +175,24 @@ export default function ProductDetail() {
 
             {/* CTAs */}
             <div className="flex flex-col gap-3">
-              <a href={`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(whatsappMsg)}`} target="_blank" rel="noopener noreferrer">
-                <Button className="w-full h-14 text-lg font-black bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-2xl gap-3 shadow-lg shadow-green-200" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+              <a
+                href={outOfStock ? undefined : `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(whatsappMsg)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={outOfStock ? "pointer-events-none" : undefined}
+              >
+                <Button disabled={outOfStock} className="w-full h-14 text-lg font-black bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-2xl gap-3 shadow-lg shadow-green-200 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                   <MessageCircle className="w-6 h-6" fill="white" />
                   {t("Order on WhatsApp", "اطلب عبر واتساب")}
                 </Button>
               </a>
               <div className="flex gap-3">
-                <Button onClick={handleAddToCart} variant="outline" className="flex-1 h-12 rounded-xl font-bold border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground gap-2" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                <Button onClick={handleAddToCart} disabled={outOfStock} variant="outline" className="flex-1 h-12 rounded-xl font-bold border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground gap-2 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                   <ShoppingCart className="w-5 h-5" />
                   {t("Add to Cart", "أضف للسلة")}
                 </Button>
-                <Link to="/checkout" className="flex-1">
-                  <Button className="w-full h-12 rounded-xl font-bold bg-primary hover:bg-primary/90" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                <Link to="/checkout" className={`flex-1 ${outOfStock ? "pointer-events-none" : ""}`}>
+                  <Button disabled={outOfStock} className="w-full h-12 rounded-xl font-bold bg-primary hover:bg-primary/90 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                     {t("Buy Now", "اشترِ الآن")}
                   </Button>
                 </Link>

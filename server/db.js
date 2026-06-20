@@ -46,15 +46,12 @@ try {
 }
 export const db = _db;
 
-// All 28 entities the frontend talks to. Each is stored in a generic table:
-//   id TEXT PK, created_date, updated_date, doc JSON
+// All entities the Trending Store frontend talks to. Each is stored in a generic
+// table: id TEXT PK, created_date, updated_date, doc JSON.
+// Names are case-sensitive and MUST match the frontend's base44.entities.<Name>.
 export const ENTITIES = [
-  'AuditLog', 'Campaign', 'Category', 'CmsSection', 'Collection', 'Customer',
-  'CustomerAddress', 'Discount', 'EmailLog', 'Faq', 'FreeDeliveryCredit',
-  'InventoryMovement', 'MediaAsset', 'MembershipHistory', 'MembershipSettings',
-  'Order', 'OrderItem', 'OrderStatusHistory', 'Overhead', 'Product',
-  'ProductImage', 'ProductVariant', 'PromoCode', 'Purchase', 'Review',
-  'ShippingZone', 'SiteSetting', 'User', 'WishlistItem',
+  'Product', 'Category', 'Order', 'Banner', 'SiteSettings',
+  'Testimonial', 'User', 'Discount', 'Coupon', 'EmailLog',
 ];
 
 function tableFor(entity) {

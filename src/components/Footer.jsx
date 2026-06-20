@@ -3,17 +3,13 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { MessageCircle, Phone, Mail, MapPin, Facebook, ExternalLink } from "lucide-react";
-
-function useLanguage() {
-  const [lang] = useState(() => localStorage.getItem("ts_lang") || "ar");
-  const t = (en, ar) => lang === "ar" ? ar : en;
-  const isRTL = lang === "ar";
-  return { lang, t, isRTL };
-}
+import { MessageCircle, Phone, Mail, MapPin, Facebook } from "lucide-react";
+import { useLanguage } from "@/components/useLanguage";
+import { useSiteSettings } from "@/components/useSiteSettings";
 
 export default function Footer() {
-  const { t, isRTL, lang } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  const { whatsappNumber } = useSiteSettings();
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
 
@@ -52,7 +48,7 @@ export default function Footer() {
               )}
             </p>
             <div className="flex flex-col gap-2 text-sm">
-              <a href="https://wa.me/96181751841" target="_blank" rel="noopener noreferrer"
+              <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-2 text-primary-foreground/80 hover:text-primary-foreground transition-colors group">
                 <MessageCircle className="w-4 h-4 flex-shrink-0 group-hover:scale-110 transition-transform" />
                 <span dir="ltr">+961 81 751 841</span>
@@ -84,27 +80,20 @@ export default function Footer() {
             </h3>
             <ul className="flex flex-col gap-2.5">
               {[
-                { en: "All Products", ar: "جميع المنتجات", to: "/Shop" },
-                { en: "Electronics", ar: "إلكترونيات", href: "#" },
-                { en: "Home & Kitchen", ar: "منزل ومطبخ", href: "#" },
-                { en: "Health & Beauty", ar: "صحة وجمال", href: "#" },
-                { en: "Kids & Baby", ar: "أطفال وأمومة", href: "#" },
-                { en: "Garden & Irrigation", ar: "حديقة وري", href: "#" },
-                { en: "Pets", ar: "حيوانات أليفة", href: "#" },
-                { en: "Tools", ar: "أدوات", href: "#" },
+                { en: "All Products", ar: "جميع المنتجات", to: "/shop" },
+                { en: "Electronics", ar: "إلكترونيات", to: "/shop?cat=electronics" },
+                { en: "Home & Kitchen", ar: "منزل ومطبخ", to: "/shop?cat=home" },
+                { en: "Health & Beauty", ar: "صحة وجمال", to: "/shop?cat=health" },
+                { en: "Kids & Baby", ar: "أطفال وأمومة", to: "/shop?cat=kids" },
+                { en: "Garden & Irrigation", ar: "حديقة وري", to: "/shop?cat=garden" },
+                { en: "Pets", ar: "حيوانات أليفة", to: "/shop?cat=pets" },
+                { en: "Tools", ar: "أدوات", to: "/shop?cat=tools" },
               ].map((item, i) => (
                 <li key={i}>
-                  {item.to ? (
-                    <Link to={item.to} className="text-primary-foreground/70 hover:text-primary-foreground text-sm transition-colors"
-                      style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                      {isRTL ? item.ar : item.en}
-                    </Link>
-                  ) : (
-                    <a href={item.href} className="text-primary-foreground/70 hover:text-primary-foreground text-sm transition-colors"
-                      style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                      {isRTL ? item.ar : item.en}
-                    </a>
-                  )}
+                  <Link to={item.to} className="text-primary-foreground/70 hover:text-primary-foreground text-sm transition-colors"
+                    style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                    {isRTL ? item.ar : item.en}
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -118,18 +107,16 @@ export default function Footer() {
             </h3>
             <ul className="flex flex-col gap-2.5">
               {[
-                { en: "About Us", ar: "من نحن", href: "#" },
-                { en: "Delivery & Returns", ar: "التوصيل والإرجاع", href: "#" },
-                { en: "Contact Us", ar: "تواصل معنا", href: "#" },
-                { en: "Privacy Policy", ar: "سياسة الخصوصية", href: "#" },
-                { en: "Terms & Conditions", ar: "الشروط والأحكام", href: "#" },
-                { en: "FAQ", ar: "الأسئلة الشائعة", href: "#" },
+                { en: "About Us", ar: "من نحن", to: "/about" },
+                { en: "Delivery & Returns", ar: "التوصيل والإرجاع", to: "/delivery" },
+                { en: "Contact Us", ar: "تواصل معنا", to: "/contact" },
+                { en: "Search", ar: "بحث", to: "/search" },
               ].map((item, i) => (
                 <li key={i}>
-                  <a href={item.href} className="text-primary-foreground/70 hover:text-primary-foreground text-sm transition-colors"
+                  <Link to={item.to} className="text-primary-foreground/70 hover:text-primary-foreground text-sm transition-colors"
                     style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                     {isRTL ? item.ar : item.en}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -193,7 +180,7 @@ export default function Footer() {
                   className="w-10 h-10 bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110">
                   <Facebook className="w-5 h-5 text-primary-foreground" />
                 </a>
-                <a href="https://wa.me/96181751841" target="_blank" rel="noopener noreferrer"
+                <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer"
                   className="w-10 h-10 bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110">
                   <MessageCircle className="w-5 h-5 text-primary-foreground" />
                 </a>
@@ -213,15 +200,15 @@ export default function Footer() {
             {t("All rights reserved.", "جميع الحقوق محفوظة.")}
           </div>
           <div className={`flex items-center gap-4 flex-wrap ${isRTL ? "flex-row-reverse" : ""}`}>
-            <a href="#" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-              {t("Privacy", "الخصوصية")}
-            </a>
-            <a href="#" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-              {t("Terms", "الشروط")}
-            </a>
-            <a href="#" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-              {t("Cookies", "الكوكيز")}
-            </a>
+            <Link to="/about" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+              {t("About", "من نحن")}
+            </Link>
+            <Link to="/delivery" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+              {t("Delivery", "التوصيل")}
+            </Link>
+            <Link to="/contact" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+              {t("Contact", "تواصل")}
+            </Link>
             <div className="flex items-center gap-2 text-primary-foreground/50">
               <span style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                 {t("Cash on Delivery", "الدفع عند الاستلام")}
