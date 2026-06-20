@@ -1,32 +1,25 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Search, ShoppingCart, Menu, X, MessageCircle, Globe, ChevronDown, User } from "lucide-react";
+import { Search, ShoppingCart, Menu, MessageCircle, Globe } from "lucide-react";
 import { useLanguage } from "@/components/useLanguage";
 import { useCart } from "@/components/useCart";
+import { useSiteSettings } from "@/components/useSiteSettings";
 import CartDrawer from "@/components/CartDrawer";
 
 export default function Header() {
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { cart, cartCount, subtotal, updateQty, removeFromCart } = useCart();
+  const { whatsappNumber } = useSiteSettings();
   const [cartOpen, setCartOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const location = useLocation();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Listen for cart updates from external sources
-  useEffect(() => {
-    const handler = () => {};
-    window.addEventListener("cart-update", handler);
-    return () => window.removeEventListener("cart-update", handler);
   }, []);
 
   return (
@@ -68,6 +61,13 @@ export default function Header() {
 
             {/* Right Actions */}
             <div className="flex items-center justify-end gap-3 flex-1">
+              {/* Search */}
+              <Link to="/search" className="hidden sm:block">
+                <Button variant="ghost" size="icon" className="text-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors">
+                  <Search className="w-5 h-5" />
+                </Button>
+              </Link>
+
               {/* Language Toggle */}
               <Button onClick={toggleLang} variant="ghost" size="sm" className="hidden sm:flex items-center gap-1.5 text-foreground hover:bg-muted rounded-full font-bold text-xs">
                 <Globe className="w-4 h-4" />
@@ -75,7 +75,7 @@ export default function Header() {
               </Button>
 
               {/* WhatsApp */}
-              <a href="https://wa.me/96181751841" target="_blank" rel="noopener noreferrer" className="hidden sm:block">
+              <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="hidden sm:block">
                 <Button variant="ghost" size="icon" className="text-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors">
                   <MessageCircle className="w-5 h-5" />
                 </Button>
@@ -135,7 +135,7 @@ export default function Header() {
                         <Globe className="w-5 h-5 mr-2" />
                         {lang === "ar" ? "Switch to English" : "التبديل للعربية"}
                       </Button>
-                      <a href="https://wa.me/96181751841" target="_blank" rel="noopener noreferrer" className="w-full">
+                      <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="w-full">
                         <Button className="w-full justify-center h-12 rounded-xl text-base font-bold bg-[#25D366] hover:bg-[#1ebe5d] text-white" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                           <MessageCircle className="w-5 h-5 mr-2" />
                           {t("Order via WhatsApp", "اطلب عبر واتساب")}
@@ -164,7 +164,7 @@ export default function Header() {
 
       {/* Floating WhatsApp Button */}
       <a
-        href="https://wa.me/96181751841?text=مرحبا، أريد الاستفسار عن منتج من ترندينج ستور"
+        href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent("مرحبا، أريد الاستفسار عن منتج من ترندينج ستور")}`}
         target="_blank"
         rel="noopener noreferrer"
         className={`fixed bottom-6 ${isRTL ? "left-6" : "right-6"} z-50 w-14 h-14 bg-[#25D366] rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-all duration-300`}

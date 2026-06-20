@@ -2,11 +2,10 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ShoppingBag, Clock, CheckCircle2, AlertTriangle, Plus, Eye,
-  Home, Tag, Package, ArrowLeft, Truck
+  Home, Tag, ArrowLeft, Truck
 } from "lucide-react";
 
 const STATUS_CONFIG = {
@@ -19,8 +18,7 @@ const STATUS_CONFIG = {
 };
 
 function formatPrice(p) {
-  if (!p) return "$0";
-  return p >= 1000 ? `$${(p / 1000).toFixed(0)}` : `$${p}`;
+  return `$${(Number(p) || 0).toLocaleString("en-US")}`;
 }
 
 export default function AdminDashboard() {

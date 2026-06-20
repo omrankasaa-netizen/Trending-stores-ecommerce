@@ -2,15 +2,47 @@ import { Link } from "react-router-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBag, MessageCircle } from "lucide-react";
+import { formatPrice } from "@/lib/utils";
+import { useSiteSettings } from "@/components/useSiteSettings";
 
-function formatPrice(p) {
-  return p >= 1000 ? `$${(p / 1000).toFixed(0)}` : `$${p}`;
+function buildWhatsAppOrder(cart, total, savings, isRTL) {
+  const lines = cart.map(
+    (i) => `• ${isRTL ? (i.product_name_ar || i.product_name) : i.product_name} x${i.quantity} = ${formatPrice(i.price * i.quantity)}`
+  );
+  if (isRTL) {
+    return [
+      "🛒 طلب جديد من ترندينج ستور",
+      "",
+      ...lines,
+      "",
+      `المجموع: ${formatPrice(total)}`,
+      savings > 0 ? `التوفير: ${formatPrice(savings)}` : null,
+      "الدفع: عند الاستلام",
+    ].filter(Boolean).join("\n");
+  }
+  return [
+    "🛒 New order from Trending Store",
+    "",
+    ...lines,
+    "",
+    `Total: ${formatPrice(total)}`,
+    savings > 0 ? `You save: ${formatPrice(savings)}` : null,
+    "Payment: Cash on Delivery",
+  ].filter(Boolean).join("\n");
 }
 
 export default function CartDrawer({ open, onClose, cart, updateQty, removeFromCart, subtotal, isRTL, t }) {
-  const deliveryFee = subtotal > 0 ? 3000 : 0;
+  const { whatsappNumber, deliveryFee: settingsDelivery } = useSiteSettings();
+  const deliveryFee = subtotal > 0 ? settingsDelivery : 0;
   const total = subtotal + deliveryFee;
+
+  const savings = cart.reduce((s, i) => {
+    const cmp = Number(i.compare_at_price) || 0;
+    return cmp > i.price ? s + (cmp - i.price) * i.quantity : s;
+  }, 0);
+
+  const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(buildWhatsAppOrder(cart, total, savings, isRTL))}`;
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -72,14 +104,27 @@ export default function CartDrawer({ open, onClose, cart, updateQty, removeFromC
                 <span>{t("Delivery", "التوصيل")}</span>
                 <span className="text-green-600 font-medium">{formatPrice(deliveryFee)}</span>
               </div>
+              {savings > 0 && (
+                <div className="flex justify-between text-sm font-medium text-red-500" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                  <span>{t("You save", "توفيرك")}</span>
+                  <span>-{formatPrice(savings)}</span>
+                </div>
+              )}
               <Separator />
               <div className="flex justify-between font-black text-foreground text-lg" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                 <span>{t("Total", "المجموع")}</span>
                 <span>{formatPrice(total)}</span>
               </div>
 
+              <a href={waUrl} target="_blank" rel="noopener noreferrer">
+                <Button className="w-full h-12 rounded-xl font-bold text-base bg-[#25D366] hover:bg-[#1ebe5d] text-white gap-2" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                  <MessageCircle className="w-5 h-5" fill="white" />
+                  {t("Send Order via WhatsApp", "أرسل الطلب عبر واتساب")}
+                </Button>
+              </a>
+
               <Link to="/checkout" onClick={onClose}>
-                <Button className="w-full h-12 rounded-xl font-bold text-base mt-1 bg-primary hover:bg-primary/90" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                <Button variant="outline" className="w-full h-12 rounded-xl font-bold text-base border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                   {t("Proceed to Checkout", "إتمام الطلب")}
                 </Button>
               </Link>

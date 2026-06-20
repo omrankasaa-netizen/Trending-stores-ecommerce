@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/useLanguage";
 import { useCart } from "@/components/useCart";
 import ProductCard from "@/components/ProductCard";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-const CATEGORIES = [
-  { en: "All", ar: "الكل", val: "all" },
+const ALL_OPTION = { en: "All", ar: "الكل", val: "all" };
+const STATIC_CATEGORIES = [
+  ALL_OPTION,
   { en: "Garden & Irrigation", ar: "حديقة وري", val: "garden" },
   { en: "Electronics", ar: "إلكترونيات", val: "electronics" },
   { en: "Home & Kitchen", ar: "منزل ومطبخ", val: "home" },
@@ -25,10 +25,12 @@ export default function Shop() {
   const { t, isRTL } = useLanguage();
   const { addToCart } = useCart();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState(STATIC_CATEGORIES);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
+  const [category, setCategory] = useState(searchParams.get("cat") || "all");
   const [sort, setSort] = useState("newest");
 
   useEffect(() => {
@@ -36,7 +38,27 @@ export default function Shop() {
       .then(setProducts)
       .catch(() => setProducts([]))
       .finally(() => setLoading(false));
+
+    // Prefer real categories from the backend; fall back to the static list.
+    base44.entities.Category.filter({ is_visible: true }, "display_order", 100)
+      .then(rows => {
+        if (rows && rows.length) {
+          setCategories([ALL_OPTION, ...rows.map(c => ({ en: c.name, ar: c.name_ar || c.name, val: c.slug }))]);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Keep the selected category in sync with the ?cat= URL param.
+  useEffect(() => {
+    setCategory(searchParams.get("cat") || "all");
+  }, [searchParams]);
+
+  const selectCategory = (val) => {
+    setCategory(val);
+    if (val === "all") setSearchParams({});
+    else setSearchParams({ cat: val });
+  };
 
   const handleAddToCart = (product) => {
     addToCart(product);
@@ -104,10 +126,10 @@ export default function Shop() {
 
         {/* Category Pills */}
         <div className="flex flex-wrap gap-2 mb-8">
-          {CATEGORIES.map(c => (
+          {categories.map(c => (
             <button
               key={c.val}
-              onClick={() => setCategory(c.val)}
+              onClick={() => selectCategory(c.val)}
               className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${category === c.val ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"}`}
               style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}
             >

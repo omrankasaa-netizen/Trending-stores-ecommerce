@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Edit2, Trash2, Search, Image, Upload, X } from "lucide-react";
+import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 
 const CATEGORIES = [
@@ -34,7 +35,7 @@ function DiscountPreview({ price, compareAt }) {
   const c = Number(compareAt);
   if (!p || !c || c <= p) return null;
   const pct = Math.round(((c - p) / c) * 100);
-  const fmt = v => v >= 1000 ? `$${(v/1000).toFixed(0)}` : `$${v}`;
+  const fmt = formatPrice;
   return (
     <div className="flex items-center gap-2 mt-2 bg-green-50 rounded-xl p-2.5">
       <span className="font-black text-green-700 text-lg">{fmt(p)}</span>
@@ -187,7 +188,7 @@ export default function AdminProducts() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(p => {
-            const fmt = v => v >= 1000 ? `$${(v/1000).toFixed(0)}` : `$${v}`;
+            const fmt = formatPrice;
             return (
               <Card key={p.id} className="border-0 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                 <div className="aspect-video bg-muted relative overflow-hidden">

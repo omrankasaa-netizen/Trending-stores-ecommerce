@@ -1,16 +1,21 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Home from './pages/Home';
 import Shop from './pages/Shop';
 import ProductDetail from './pages/ProductDetail';
 import Checkout from './pages/Checkout';
+import About from './pages/About';
+import Delivery from './pages/Delivery';
+import Contact from './pages/Contact';
+import Search from './pages/Search';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducts from './pages/admin/Products';
 import AdminOrders from './pages/admin/Orders';
@@ -52,22 +57,28 @@ const AuthenticatedApp = () => {
         <Route path="/shop" element={<Shop />} />
         <Route path="/product/:id" element={<ProductDetail />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/delivery" element={<Delivery />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/search" element={<Search />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
       </Route>
 
-      {/* Admin Routes (with sidebar layout) */}
-      <Route path="/admin" element={<AdminLayout />}>
-        <Route index element={<AdminDashboard />} />
-        <Route path="orders" element={<AdminOrders />} />
-        <Route path="orders/:id" element={<OrderDetail />} />
-        <Route path="products" element={<AdminProducts />} />
-        <Route path="inventory" element={<AdminInventory />} />
-        <Route path="categories" element={<AdminCategories />} />
-        <Route path="discounts" element={<AdminDiscounts />} />
-        <Route path="content" element={<AdminContent />} />
-        <Route path="settings" element={<AdminSettings />} />
-        <Route path="emails" element={<AdminEmailLog />} />
+      {/* Admin Routes (gated: admin role only) */}
+      <Route element={<ProtectedRoute requireAdmin unauthenticatedElement={<Navigate to="/login" replace />} />}>
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<AdminDashboard />} />
+          <Route path="orders" element={<AdminOrders />} />
+          <Route path="orders/:id" element={<OrderDetail />} />
+          <Route path="products" element={<AdminProducts />} />
+          <Route path="inventory" element={<AdminInventory />} />
+          <Route path="categories" element={<AdminCategories />} />
+          <Route path="discounts" element={<AdminDiscounts />} />
+          <Route path="content" element={<AdminContent />} />
+          <Route path="settings" element={<AdminSettings />} />
+          <Route path="emails" element={<AdminEmailLog />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<PageNotFound />} />

@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+
+const ADMIN_ROLES = ['admin', 'super_admin'];
 
 const DefaultFallback = () => (
   <div className="fixed inset-0 flex items-center justify-center">
@@ -9,8 +11,10 @@ const DefaultFallback = () => (
   </div>
 );
 
-export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthenticatedElement }) {
-  const { isAuthenticated, isLoadingAuth, authChecked, authError, checkUserAuth } = useAuth();
+// Renders nested routes only for authenticated users. When `requireAdmin` is set,
+// the user must additionally carry an admin role, otherwise they are sent home.
+export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthenticatedElement, requireAdmin = false }) {
+  const { user, isAuthenticated, isLoadingAuth, authChecked, authError, checkUserAuth } = useAuth();
 
   useEffect(() => {
     if (!authChecked && !isLoadingAuth) {
@@ -31,6 +35,10 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
 
   if (!isAuthenticated) {
     return unauthenticatedElement;
+  }
+
+  if (requireAdmin && !ADMIN_ROLES.includes(user?.role)) {
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;

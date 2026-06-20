@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { Image, ChevronDown, ChevronUp } from "lucide-react";
 
 const SETTINGS_KEYS = [
   "store_name", "store_name_ar", "whatsapp_number", "facebook_url",
@@ -135,7 +134,7 @@ export default function AdminSettings() {
           <CardContent className="space-y-4">
             <div>
               <Label className="font-bold">رسوم التوصيل ($)</Label>
-              <Input className="mt-1 w-32" type="number" value={form.delivery_fee} onChange={e => f("delivery_fee", e.target.value)} placeholder="مثال: 3000 = $3" />
+              <Input className="mt-1 w-32" type="number" value={form.delivery_fee} onChange={e => f("delivery_fee", e.target.value)} placeholder="مثال: 3 ($)" />
             </div>
             <div>
               <Label className="font-bold">منطقة التغطية (عربي)</Label>

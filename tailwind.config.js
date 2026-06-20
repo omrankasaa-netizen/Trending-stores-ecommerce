@@ -17,13 +17,10 @@ module.exports = {
     extend: {
 
       fontFamily: {
-
-        heading: ['"fontLarqGeologica"', 'sans-serif'],
-
-
-        body: ['"fontLarqGeologica"', 'sans-serif'],
-        sans: ['"fontLarqGeologica"', 'sans-serif'],
-
+        heading: ['Manrope', 'Cairo', 'sans-serif'],
+        body: ['Inter', 'Tajawal', 'sans-serif'],
+        sans: ['Manrope', 'Inter', 'Cairo', 'Tajawal', 'sans-serif'],
+        arabic: ['Cairo', 'Tajawal', 'sans-serif'],
       },
 
       colors: {

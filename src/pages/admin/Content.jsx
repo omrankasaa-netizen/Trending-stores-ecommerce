@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-import { Plus, Edit2, Trash2, Image, GripVertical } from "lucide-react";
+import { Plus, Edit2, Trash2, Image } from "lucide-react";
 
 const EMPTY_BANNER = { headline: "", headline_ar: "", subtext: "", subtext_ar: "", button_text: "", button_text_ar: "", link_target: "/shop", image_url: "", display_order: 0, is_visible: true };
 

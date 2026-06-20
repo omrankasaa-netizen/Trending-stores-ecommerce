@@ -1,31 +1,75 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/useLanguage";
 import { useCart } from "@/components/useCart";
+import { useSiteSettings } from "@/components/useSiteSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { MessageCircle, CheckCircle2, Truck, ShoppingBag } from "lucide-react";
+import { MessageCircle, CheckCircle2, Truck, ShoppingBag, Tag } from "lucide-react";
+import { formatPrice } from "@/lib/utils";
 
-const WHATSAPP = "96181751841";
-function formatPrice(p) { return p >= 1000 ? `$${(p / 1000).toFixed(0)}` : `$${p}`; }
+const WHATSAPP_FALLBACK = "96181751841";
 function genOrderNum() { return "TS-" + Date.now().toString().slice(-6); }
+
+function couponDiscount(coupon, subtotal) {
+  if (!coupon) return 0;
+  if (coupon.type === "percent") return Math.round(subtotal * (Number(coupon.value) / 100));
+  return Math.min(subtotal, Number(coupon.value) || 0);
+}
 
 export default function Checkout() {
   const { t, isRTL } = useLanguage();
   const { cart, subtotal, clearCart } = useCart();
-  const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", phone: "", address: "", city: "", notes: "" });
+  const { whatsappNumber, deliveryFee: settingsDelivery } = useSiteSettings();
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", notes: "" });
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [orderNum, setOrderNum] = useState("");
 
-  const deliveryFee = subtotal > 0 ? 3000 : 0;
-  const total = subtotal + deliveryFee;
+  const [couponCode, setCouponCode] = useState("");
+  const [coupon, setCoupon] = useState(null);
+  const [couponMsg, setCouponMsg] = useState("");
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
+
+  const WHATSAPP = whatsappNumber || WHATSAPP_FALLBACK;
+  const deliveryFee = subtotal > 0 ? settingsDelivery : 0;
+  const discount = couponDiscount(coupon, subtotal);
+  const total = Math.max(0, subtotal - discount) + deliveryFee;
 
   const updateForm = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const applyCoupon = async () => {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) return;
+    setCheckingCoupon(true);
+    setCouponMsg("");
+    try {
+      const [found] = await base44.entities.Coupon.filter({ code });
+      if (!found || !found.active) {
+        setCoupon(null);
+        setCouponMsg(t("Invalid coupon code", "كود الخصم غير صالح"));
+      } else if (found.expiry && new Date(found.expiry) < new Date()) {
+        setCoupon(null);
+        setCouponMsg(t("This coupon has expired", "انتهت صلاحية هذا الكوبون"));
+      } else if (found.usage_limit && Number(found.usage_count) >= Number(found.usage_limit)) {
+        setCoupon(null);
+        setCouponMsg(t("This coupon has reached its usage limit", "تم استخدام هذا الكوبون بالكامل"));
+      } else if (found.min_order && subtotal < Number(found.min_order)) {
+        setCoupon(null);
+        setCouponMsg(t(`Minimum order is ${formatPrice(found.min_order)}`, `الحد الأدنى للطلب ${formatPrice(found.min_order)}`));
+      } else {
+        setCoupon(found);
+        setCouponMsg(t("Coupon applied!", "تم تطبيق الكوبون!"));
+      }
+    } catch {
+      setCoupon(null);
+      setCouponMsg(t("Could not validate coupon", "تعذر التحقق من الكوبون"));
+    }
+    setCheckingCoupon(false);
+  };
 
   const buildWhatsAppMessage = (oNum) => {
     const lines = cart.map(i => `• ${isRTL ? i.product_name_ar : i.product_name} x${i.quantity} = ${formatPrice(i.price * i.quantity)}`);
@@ -39,20 +83,35 @@ export default function Checkout() {
     e.preventDefault();
     setLoading(true);
     const oNum = genOrderNum();
-    await base44.entities.Order.create({
+    const order = await base44.entities.Order.create({
       order_number: oNum,
       customer_name: form.name,
       customer_phone: form.phone,
+      customer_email: form.email || undefined,
       customer_address: form.address,
       customer_city: form.city,
       customer_notes: form.notes,
       items: cart,
       subtotal,
+      discount,
+      coupon_code: coupon?.code || undefined,
       delivery_fee: deliveryFee,
       total,
       status: "pending",
       payment_method: "cod",
     });
+
+    // Order automation (best-effort — never block the confirmation screen).
+    try {
+      const orderId = order?.id;
+      await Promise.allSettled([
+        base44.functions.commitStock({ order_id: orderId }),
+        base44.functions.sendOrderNotification({ order_id: orderId }),
+        form.email ? base44.functions.sendOrderConfirmation({ order_id: orderId }) : Promise.resolve(),
+        coupon ? base44.entities.Coupon.update(coupon.id, { usage_count: Number(coupon.usage_count || 0) + 1 }) : Promise.resolve(),
+      ]);
+    } catch { /* automation failures must not break checkout */ }
+
     setOrderNum(oNum);
     setSubmitted(true);
     clearCart();
@@ -122,6 +181,10 @@ export default function Checkout() {
                 </div>
               </div>
               <div>
+                <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Email (optional — for order updates)", "البريد الإلكتروني (اختياري — لتحديثات الطلب)")}</Label>
+                <Input value={form.email} onChange={e => updateForm("email", e.target.value)} type="email" className={`mt-1.5 ${inputClass}`} style={{ direction: "ltr" }} />
+              </div>
+              <div>
                 <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("City *", "المدينة *")}</Label>
                 <Input value={form.city} onChange={e => updateForm("city", e.target.value)} required className={`mt-1.5 ${inputClass}`} placeholder={t("e.g. Tripoli, Beirut, Sidon...", "مثال: طرابلس، بيروت، صيدا...")} style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }} />
               </div>
@@ -168,8 +231,32 @@ export default function Checkout() {
               ))}
             </div>
             <Separator className="my-4" />
+
+            {/* Coupon */}
+            <div className="flex gap-2 mb-3">
+              <Input
+                value={couponCode}
+                onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                placeholder={t("Coupon code", "كود الخصم")}
+                className="h-10 rounded-xl uppercase"
+                style={{ direction: "ltr", letterSpacing: "0.08em" }}
+              />
+              <Button type="button" variant="outline" onClick={applyCoupon} disabled={checkingCoupon || !couponCode.trim()} className="h-10 rounded-xl font-bold gap-1.5">
+                <Tag className="w-4 h-4" />
+                {t("Apply", "تطبيق")}
+              </Button>
+            </div>
+            {couponMsg && (
+              <p className={`text-xs mb-3 ${coupon ? "text-green-600" : "text-red-500"}`} style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                {couponMsg}
+              </p>
+            )}
+
             <div className="flex flex-col gap-2 text-sm" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
               <div className="flex justify-between"><span className="text-muted-foreground">{t("Subtotal", "المجموع الفرعي")}</span><span>{formatPrice(subtotal)}</span></div>
+              {discount > 0 && (
+                <div className="flex justify-between text-red-500 font-medium"><span>{t("Discount", "الخصم")} ({coupon?.code})</span><span>-{formatPrice(discount)}</span></div>
+              )}
               <div className="flex justify-between"><span className="text-muted-foreground">{t("Delivery", "التوصيل")}</span><span className="text-green-600 font-medium">{formatPrice(deliveryFee)}</span></div>
             </div>
             <Separator className="my-3" />

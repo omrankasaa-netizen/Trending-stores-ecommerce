@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { ArrowRight, MessageCircle, Printer, Phone } from "lucide-react";
+import { formatPrice } from "@/lib/utils";
 
 const FLOW = ["pending", "confirmed", "processing", "shipped", "delivered"];
 const STATUS_CONFIG = {
@@ -22,11 +23,6 @@ const NEXT_LABEL = {
   processing: "إرسال للتوصيل 🚚",
   shipped:    "تم التسليم ✅",
 };
-
-function formatPrice(p) {
-  if (!p) return "$0";
-  return p >= 1000 ? `$${(p / 1000).toFixed(0)}` : `$${p}`;
-}
 
 function buildWhatsAppMsg(order) {
   const itemsText = (order.items || []).map(i => `- ${i.product_name_ar || i.product_name} ×${i.quantity}`).join("\n");
@@ -66,12 +62,18 @@ export default function OrderDetail() {
     base44.entities.Order.filter({ id }).then(([o]) => { setOrder(o); }).finally(() => setLoading(false));
   }, [id]);
 
+  const notifyStatus = (orderId, status) => {
+    // Customer status emails are best-effort; the server skips when no email is on file.
+    base44.functions.sendOrderStatusUpdate({ order_id: orderId, new_status: status }).catch(() => {});
+  };
+
   const advanceStatus = async () => {
     const next = STATUS_CONFIG[order.status]?.next;
     if (!next) return;
     setUpdating(true);
     const updated = await base44.entities.Order.update(order.id, { status: next });
     setOrder(updated);
+    notifyStatus(order.id, next);
     toast({ title: `تم تحديث الحالة إلى: ${STATUS_CONFIG[next]?.label}` });
     setUpdating(false);
   };
@@ -80,6 +82,7 @@ export default function OrderDetail() {
     if (!confirm("هل أنت متأكد من إلغاء هذا الطلب؟")) return;
     const updated = await base44.entities.Order.update(order.id, { status: "cancelled" });
     setOrder(updated);
+    notifyStatus(order.id, "cancelled");
     toast({ title: "تم إلغاء الطلب" });
   };
 

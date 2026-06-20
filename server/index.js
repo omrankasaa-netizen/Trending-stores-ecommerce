@@ -19,15 +19,15 @@ import { invokeFunction } from './functions.js';
 import { sendEmail } from './email.js';
 import { runSeed } from './seed.js';
 
-// Build the verification-code email HTML.
+// Build the verification-code email HTML (Trending Store branding).
 function otpEmailHtml(code) {
-  return `<!doctype html><html><body style="margin:0;background:#f4f1ea;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+  return `<!doctype html><html><body style="margin:0;background:#f4f6f7;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
     <div style="max-width:480px;margin:0 auto;padding:32px 24px;">
-      <p style="font-size:18px;font-weight:700;letter-spacing:4px;color:#111111;margin:0 0 20px;">AURA WEAR</p>
+      <p style="font-size:18px;font-weight:800;letter-spacing:1px;color:#127a8a;margin:0 0 20px;">Trending Store</p>
       <h1 style="font-size:20px;font-weight:600;color:#111111;margin:0 0 8px;">Verify your email</h1>
       <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 24px;">Enter this code to confirm your email address. It expires in 10 minutes.</p>
-      <div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#111111;background:#fff;border:1px solid #ece7df;border-radius:4px;padding:18px;text-align:center;">${code}</div>
-      <p style="color:#999;font-size:12px;margin:24px 0 0;">If you didn't create an AURA WEAR account, you can safely ignore this email.</p>
+      <div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#127a8a;background:#fff;border:1px solid #e3e8ea;border-radius:8px;padding:18px;text-align:center;">${code}</div>
+      <p style="color:#999;font-size:12px;margin:24px 0 0;">If you didn't create a Trending Store account, you can safely ignore this email.</p>
     </div></body></html>`;
 }
 
@@ -99,7 +99,7 @@ app.post('/api/auth/register', (req, res) => {
     if (process.env.MINIYO_OTP_DEBUG === '1') console.log(`[otp:register] ${user.email} -> ${code}`);
     sendEmail({
       to: user.email,
-      subject: 'Your AURA WEAR verification code',
+      subject: 'Your Trending Store verification code',
       html: otpEmailHtml(code),
       email_type: 'otp_verification',
       customer_id: user.id,
@@ -120,6 +120,10 @@ app.post('/api/auth/verify-otp', (req, res) => {
     const fresh = getRecord('User', user.id);
     const token = signToken(user.id);
     setSessionCookie(res, token);
+    // Best-effort welcome email after first verification.
+    invokeFunction('sendWelcomeEmailNew', {
+      customer_id: fresh.id, email: fresh.email, full_name: fresh.full_name,
+    }).catch(() => {});
     res.json({ access_token: token, user: publicUser(fresh) });
   } catch (e) { handleError(res, e); }
 });
@@ -135,7 +139,7 @@ app.post('/api/auth/resend-otp', (req, res) => {
       if (process.env.MINIYO_OTP_DEBUG === '1') console.log(`[otp:resend] ${user.email} -> ${code}`);
       sendEmail({
         to: user.email,
-        subject: 'Your AURA WEAR verification code',
+        subject: 'Your Trending Store verification code',
         html: otpEmailHtml(code),
         email_type: 'otp_verification',
         customer_id: user.id,
@@ -227,16 +231,25 @@ app.post('/api/functions/:name', async (req, res) => {
   } catch (e) { handleError(res, e); }
 });
 
-// ─── File upload (base64 JSON or raw) ──────────────────────────────────────────
+// ─── File upload (base64 JSON) ──────────────────────────────────────────────
+// Accepts { file } where file is a base64 string or data URL, and writes it to
+// the uploads dir. Returns { file_url }.
 app.post('/api/upload', (req, res) => {
   try {
     const user = getUserFromRequest(req);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
-    const { filename, content_base64 } = req.body || {};
-    if (!content_base64) return res.status(400).json({ error: 'content_base64 required' });
-    const base = (filename || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const { file, filename } = req.body || {};
+    if (!file) return res.status(400).json({ error: 'file required' });
+    // Derive an extension from a data URL mime type if present.
+    let ext = '';
+    const mimeMatch = String(file).match(/^data:([^;,]+)[;,]/);
+    if (mimeMatch) {
+      const sub = mimeMatch[1].split('/')[1];
+      if (sub) ext = '.' + sub.replace(/[^a-zA-Z0-9]/g, '');
+    }
+    const base = (filename || `upload${ext}`).replace(/[^a-zA-Z0-9._-]/g, '_');
     const name = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${base}`;
-    const data = content_base64.includes(',') ? content_base64.split(',')[1] : content_base64;
+    const data = String(file).includes(',') ? String(file).split(',')[1] : String(file);
     fs.writeFileSync(path.join(UPLOAD_DIR, name), Buffer.from(data, 'base64'));
     res.json({ file_url: `/uploads/${name}` });
   } catch (e) { handleError(res, e); }
@@ -257,22 +270,14 @@ function ensureEntity(req, res, next) {
 // products, prices, discounts, orders, etc. directly against the API.
 //
 // The storefront legitimately performs a small set of writes as an
-// unauthenticated guest (checkout, account self-service). Those — and only
-// those — are allowed per (entity, operation) below. Everything else requires
-// an admin/super_admin session.
+// unauthenticated guest (checkout). Those — and only those — are allowed per
+// (entity, operation) below. Everything else requires an admin session.
 const isAdmin = (user) => !!user && (user.role === 'admin' || user.role === 'super_admin');
 
-// Entity → operations that a non-admin (guest/customer) may perform.
+// Entity → operations a non-admin (guest/customer) may perform.
 const PUBLIC_WRITES = {
-  Order: ['create'],
-  OrderItem: ['create'],
-  OrderStatusHistory: ['create'],
-  Customer: ['create', 'update'],
-  CustomerAddress: ['create', 'update', 'delete'],
-  Review: ['create'],
-  WishlistItem: ['create', 'delete'],
-  PromoCode: ['update'], // checkout increments times_used only
-  AuditLog: ['create'],
+  Order: ['create'],          // guest checkout
+  Coupon: ['update'],         // checkout increments usage_count only
 };
 
 function authorizeWrite(op) {
@@ -289,7 +294,7 @@ function authorizeWrite(op) {
 // Never expose User credential-bearing fields through generic CRUD.
 function sanitize(entity, record) {
   if (entity === 'User' && record) {
-    const { password_hash, ...rest } = record;
+    const { password_hash, otp_hash, ...rest } = record;
     return rest;
   }
   return record;
@@ -347,8 +352,6 @@ if (fs.existsSync(DIST)) {
 }
 
 // Bind to 0.0.0.0 so the platform router (Railway/Render/etc.) can reach the app.
-// Binding to the default (localhost) causes the proxy to 502 even though the
-// server logs that it is "listening".
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`AURA WEAR server listening on 0.0.0.0:${PORT}`);
+  console.log(`Trending Store server listening on 0.0.0.0:${PORT}`);
 });

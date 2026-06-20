@@ -2,13 +2,9 @@ import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, ShoppingCart, Play } from "lucide-react";
+import { formatPrice } from "@/lib/utils";
 
 const WHATSAPP = "96181751841";
-
-function formatPrice(p) {
-  if (!p) return "";
-  return p >= 1000 ? `$${(p / 1000).toFixed(0)}` : `$${p}`;
-}
 
 function buildWhatsAppUrl(product, isRTL) {
   const name = isRTL ? product.name_ar : product.name;
@@ -25,6 +21,8 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
   const discount = product.compare_at_price && product.compare_at_price > product.price
     ? Math.round((1 - product.price / product.compare_at_price) * 100)
     : null;
+
+  const outOfStock = Number(product.stock_quantity) <= 0;
 
   return (
     <div className="group flex flex-col h-full bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
@@ -43,11 +41,18 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
             {product.is_bestseller && <Badge className="bg-amber-500 text-white text-xs font-bold px-2 py-0.5">⭐ BEST</Badge>}
             {product.is_trending && <Badge className="bg-purple-500 text-white text-xs font-bold px-2 py-0.5">🔥</Badge>}
           </div>
-          {product.video_url && (
+          {product.video_url && !outOfStock && (
             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
               <div className="w-12 h-12 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center">
                 <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
               </div>
+            </div>
+          )}
+          {outOfStock && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
+              <span className="px-4 py-1.5 rounded-full bg-foreground/80 text-white text-xs font-black uppercase tracking-wide">
+                {isRTL ? "نفذت الكمية" : "Out of Stock"}
+              </span>
             </div>
           )}
         </div>
@@ -77,7 +82,8 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
 
         <div className="flex gap-2">
           <Button
-            className="flex-1 bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-xl h-10 text-sm font-bold gap-1.5"
+            disabled={outOfStock}
+            className="flex-1 bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-xl h-10 text-sm font-bold gap-1.5 disabled:opacity-50"
             onClick={() => window.open(buildWhatsAppUrl(product, isRTL), "_blank")}
             style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}
           >
@@ -87,7 +93,8 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
           {onAddToCart && (
             <Button
               variant="outline"
-              className="rounded-xl h-10 px-3 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+              disabled={outOfStock}
+              className="rounded-xl h-10 px-3 border-primary text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
               onClick={() => onAddToCart(product)}
             >
               <ShoppingCart className="w-4 h-4" />
