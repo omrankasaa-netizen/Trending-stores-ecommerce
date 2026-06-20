@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "customer_name": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "text_ar": {
+      "type": "string"
+    },
+    "rating": {
+      "type": "number"
+    },
+    "product_name": {
+      "type": "string"
+    }
+  },
+  "required": [],
+  "name": "Testimonial"
+}

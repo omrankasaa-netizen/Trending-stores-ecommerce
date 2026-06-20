@@ -1,0 +1,91 @@
+import { Toaster } from "@/components/ui/toaster"
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClientInstance } from '@/lib/query-client'
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import PageNotFound from './lib/PageNotFound';
+import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Home from './pages/Home';
+import Shop from './pages/Shop';
+import ProductDetail from './pages/ProductDetail';
+import Checkout from './pages/Checkout';
+import AdminDashboard from './pages/admin/Dashboard';
+import AdminProducts from './pages/admin/Products';
+import AdminOrders from './pages/admin/Orders';
+import OrderDetail from './pages/admin/OrderDetail';
+import AdminInventory from './pages/admin/Inventory';
+import AdminCategories from './pages/admin/Categories';
+import AdminDiscounts from './pages/admin/Discounts';
+import AdminContent from './pages/admin/Content';
+import AdminSettings from './pages/admin/Settings';
+import AdminEmailLog from './pages/admin/EmailLog';
+import AdminLayout from './components/admin/AdminLayout';
+import Layout from './components/Layout';
+
+const AuthenticatedApp = () => {
+  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+
+  if (isLoadingPublicSettings || isLoadingAuth) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (authError) {
+    if (authError.type === 'user_not_registered') {
+      return <UserNotRegisteredError />;
+    } else if (authError.type === 'auth_required') {
+      navigateToLogin();
+      return null;
+    }
+  }
+
+  return (
+    <Routes>
+      {/* Storefront Routes (with Header/Footer) */}
+      <Route element={<Layout />}>
+        <Route path="/" element={<Home />} />
+        <Route path="/shop" element={<Shop />} />
+        <Route path="/product/:id" element={<ProductDetail />} />
+        <Route path="/checkout" element={<Checkout />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+      </Route>
+
+      {/* Admin Routes (with sidebar layout) */}
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route index element={<AdminDashboard />} />
+        <Route path="orders" element={<AdminOrders />} />
+        <Route path="orders/:id" element={<OrderDetail />} />
+        <Route path="products" element={<AdminProducts />} />
+        <Route path="inventory" element={<AdminInventory />} />
+        <Route path="categories" element={<AdminCategories />} />
+        <Route path="discounts" element={<AdminDiscounts />} />
+        <Route path="content" element={<AdminContent />} />
+        <Route path="settings" element={<AdminSettings />} />
+        <Route path="emails" element={<AdminEmailLog />} />
+      </Route>
+
+      <Route path="*" element={<PageNotFound />} />
+    </Routes>
+  );
+};
+
+function App() {
+  return (
+    <AuthProvider>
+      <QueryClientProvider client={queryClientInstance}>
+        <Router>
+          <AuthenticatedApp />
+        </Router>
+        <Toaster />
+      </QueryClientProvider>
+    </AuthProvider>
+  )
+}
+
+export default App

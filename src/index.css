@@ -1,0 +1,215 @@
+
+@import url('https://fonts.googleapis.com/css2?family=fontLarqGeologica:wght@300;400;500;600;700&display=swap');
+
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@layer base {
+  :root {
+
+    --accent: 207 24.4% 83.9%;
+
+    --accent-foreground: 222.2 84% 4.9%;
+
+    --background: 0 0% 100%;
+
+    --border: 206.2 26.7% 88.2%;
+
+    --card: 0 0% 100%;
+
+    --card-foreground: 222.2 84% 4.9%;
+
+    --destructive: 0 84.2% 60.2%;
+
+    --destructive-foreground: 210 40% 98%;
+
+    --font-body: 'fontLarqGeologica', system-ui, sans-serif;
+
+    --font-heading: 'fontLarqGeologica', system-ui, sans-serif;
+
+    --foreground: 222.2 84% 4.9%;
+
+    --input: 214.3 31.8% 91.4%;
+
+    --muted: 0 0% 94.1%;
+
+    --muted-foreground: 211.3 11.7% 38.6%;
+
+    --popover: 0 0% 100%;
+
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 208.3 62.5% 22%;
+
+    --primary-foreground: 0 0% 100%;
+
+    --radius: 1.5rem;
+
+    --ring: 208.3 62.5% 22%;
+
+    --secondary: 206.2 26.7% 88.2%;
+
+    --secondary-foreground: 222.2 84% 4.9%;
+
+  }
+}
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+
+body { font-family: var(--font-body) !important; }
+h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading) !important; }
+
+
+
+/* Trending Store — Custom CSS */
+
+/* Font imports handled by platform */
+/* Keyframe Animations */
+@keyframes floatA {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-18px) rotate(3deg); }
+}
+
+@keyframes floatB {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(-2deg); }
+}
+
+@keyframes floatC {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes animation-ptkdgw {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes nprogress-spinner {
+  0% { transform: rotate(0deg); }
+  to { transform: rotate(1turn); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px hsl(var(--primary) / 0.3); }
+  50% { box-shadow: 0 0 40px hsl(var(--primary) / 0.6); }
+}
+
+/* Utility Classes */
+.animate-gradient-x {
+  animation: gradient-x 6s ease infinite;
+  background-size: 200% auto;
+}
+
+.animate-shimmer {
+  animation: shimmer 3s ease-in-out infinite;
+  background-size: 200% 100%;
+}
+
+.animate-float-a {
+  animation: floatA 8s ease-in-out infinite;
+}
+
+.animate-float-b {
+  animation: floatB 6s ease-in-out 2s infinite;
+}
+
+.animate-marquee {
+  animation: animation-ptkdgw 20s linear infinite;
+}
+
+/* RTL Support */
+[dir="rtl"] .rtl-mirror {
+  transform: scaleX(-1);
+}
+
+/* Arabic Font */
+[lang="ar"], [dir="rtl"] {
+  font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary));
+}
+
+/* Smooth Scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Card hover glow */
+.card-glow:hover {
+  box-shadow: 0 20px 60px -15px hsl(var(--primary) / 0.25);
+}
+
+/* Product image container */
+.product-img-container {
+  background: linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--secondary)) 100%);
+}
+
+/* Announcement bar marquee */
+.marquee-container {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.marquee-content {
+  display: inline-block;
+  animation: animation-ptkdgw 25s linear infinite;
+}
+
+/* Badge pulse */
+.badge-pulse {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Number inputs no arrows */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

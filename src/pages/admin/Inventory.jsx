@@ -1,0 +1,148 @@
+import { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
+import { Search, Check, Edit2 } from "lucide-react";
+
+export default function AdminInventory() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [editingQty, setEditingQty] = useState({});
+  const [savingId, setSavingId] = useState(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    base44.entities.Product.list("-created_date", 200).then(setProducts).finally(() => setLoading(false));
+  }, []);
+
+  const saveQty = async (id) => {
+    const qty = editingQty[id];
+    if (qty === undefined) return;
+    setSavingId(id);
+    await base44.entities.Product.update(id, { stock_quantity: Number(qty) });
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, stock_quantity: Number(qty) } : p));
+    setEditingQty(prev => { const n = { ...prev }; delete n[id]; return n; });
+    toast({ title: "✅ تم تحديث الكمية" });
+    setSavingId(null);
+  };
+
+  const filtered = products.filter(p => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || (p.name || "").toLowerCase().includes(q) || (p.name_ar || "").includes(search);
+    if (filter === "out") return matchSearch && p.stock_quantity === 0;
+    if (filter === "low") return matchSearch && p.stock_quantity != null && p.stock_quantity > 0 && p.stock_quantity <= 5;
+    if (filter === "ok") return matchSearch && (p.stock_quantity == null || p.stock_quantity > 5);
+    return matchSearch;
+  });
+
+  const stats = {
+    out: products.filter(p => p.stock_quantity === 0).length,
+    low: products.filter(p => p.stock_quantity != null && p.stock_quantity > 0 && p.stock_quantity <= 5).length,
+    ok: products.filter(p => p.stock_quantity == null || p.stock_quantity > 5).length,
+  };
+
+  return (
+    <div dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-black">المخزون</h1>
+        <p className="text-sm text-muted-foreground mt-1">راقب وحدّث كميات المنتجات</p>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <Card className="border-0 shadow-sm bg-red-50 cursor-pointer" onClick={() => setFilter("out")}>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-black text-red-600">{stats.out}</div>
+            <div className="text-xs font-bold text-red-500">نفد المخزون</div>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-sm bg-amber-50 cursor-pointer" onClick={() => setFilter("low")}>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-black text-amber-600">{stats.low}</div>
+            <div className="text-xs font-bold text-amber-500">مخزون منخفض</div>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-sm bg-green-50 cursor-pointer" onClick={() => setFilter("ok")}>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-black text-green-600">{stats.ok}</div>
+            <div className="text-xs font-bold text-green-500">متوفر</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card className="border-0 shadow-sm mb-4">
+        <CardContent className="p-3 flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute right-3 top-2.5 w-4 h-4 text-muted-foreground" />
+            <Input placeholder="ابحث عن منتج..." value={search} onChange={e => setSearch(e.target.value)}
+              className="pr-9 text-right rounded-xl text-sm" style={{ direction: "rtl" }} />
+          </div>
+          {[["all","الكل"],["out","نفد"],["low","منخفض"],["ok","متوفر"]].map(([v,l]) => (
+            <button key={v} onClick={() => setFilter(v)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${filter === v ? "bg-primary text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              {l}
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-8 text-center text-muted-foreground">جاري التحميل...</div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {filtered.map(p => {
+                const qty = p.stock_quantity;
+                const isOut = qty === 0;
+                const isLow = qty != null && qty > 0 && qty <= 5;
+                const isEditing = editingQty[p.id] !== undefined;
+                return (
+                  <div key={p.id} className={`flex items-center gap-3 px-4 py-3 ${isOut ? "bg-red-50/50" : isLow ? "bg-amber-50/50" : ""}`}>
+                    <img src={p.image_url || "https://placehold.co/40x40?text=?"} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-sm truncate">{p.name_ar || p.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{p.name}</div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {isEditing ? (
+                        <>
+                          <Input
+                            type="number" value={editingQty[p.id]}
+                            onChange={e => setEditingQty(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            className="w-20 h-9 text-center rounded-xl text-sm"
+                            autoFocus
+                          />
+                          <Button size="icon" className="h-9 w-9 rounded-xl" onClick={() => saveQty(p.id)} disabled={savingId === p.id}>
+                            <Check className="w-4 h-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          {isOut && <Badge className="bg-red-500 text-white text-xs">نفد!</Badge>}
+                          {isLow && <Badge className="bg-amber-500 text-white text-xs">{qty} قطعة</Badge>}
+                          {!isOut && !isLow && <span className="text-sm font-bold text-green-600">{qty != null ? `${qty} قطعة` : "غير محدود"}</span>}
+                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl"
+                            onClick={() => setEditingQty(prev => ({ ...prev, [p.id]: qty ?? 0 }))}>
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {filtered.length === 0 && <div className="p-8 text-center text-muted-foreground">لا توجد منتجات</div>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

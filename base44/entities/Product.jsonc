@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "name_ar": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "short_description": {
+      "type": "string"
+    },
+    "short_description_ar": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "price": {
+      "type": "number"
+    },
+    "compare_at_price": {
+      "type": "number"
+    },
+    "stock_quantity": {
+      "type": "number"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "video_url": {
+      "type": "string"
+    },
+    "is_featured": {
+      "type": "boolean"
+    },
+    "is_trending": {
+      "type": "boolean"
+    },
+    "is_bestseller": {
+      "type": "boolean"
+    },
+    "is_new": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [],
+  "name": "Product"
+}

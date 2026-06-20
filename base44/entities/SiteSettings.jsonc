@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "name": "SiteSettings",
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "value": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "key"
+  ]
+}

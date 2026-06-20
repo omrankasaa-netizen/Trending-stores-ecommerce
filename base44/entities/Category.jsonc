@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "name_ar": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "display_order": {
+      "type": "number"
+    },
+    "is_visible": {
+      "type": "boolean"
+    }
+  },
+  "required": [],
+  "name": "Category"
+}

@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "properties": {
+    "image_url": {
+      "type": "string"
+    },
+    "headline": {
+      "type": "string"
+    },
+    "headline_ar": {
+      "type": "string"
+    },
+    "subtext": {
+      "type": "string"
+    },
+    "subtext_ar": {
+      "type": "string"
+    },
+    "button_text": {
+      "type": "string"
+    },
+    "button_text_ar": {
+      "type": "string"
+    },
+    "link_target": {
+      "type": "string"
+    },
+    "display_order": {
+      "type": "number"
+    },
+    "is_visible": {
+      "type": "boolean"
+    }
+  },
+  "required": [],
+  "name": "Banner"
+}
