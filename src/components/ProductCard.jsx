@@ -1,8 +1,10 @@
+import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, ShoppingCart, Play } from "lucide-react";
+import { MessageCircle, ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { getProductImages, getImageFrameStyle, hasCrop } from "@/lib/productImages";
 
 const WHATSAPP = "96181751841";
 
@@ -12,6 +14,21 @@ function buildWhatsAppUrl(product, isRTL) {
     ? `مرحبا، أريد الطلب: ${name} - السعر: ${formatPrice(product.price)}`
     : `Hi, I want to order: ${name} - Price: ${formatPrice(product.price)}`;
   return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`;
+}
+
+// A single framed image inside the fixed 3:4 box. Honors focal/crop metadata.
+function CardImage({ image, alt, eager }) {
+  const cropped = hasCrop(image);
+  return (
+    <img
+      src={image?.url || "https://placehold.co/600x800?text=Product"}
+      alt={alt}
+      className={`w-full h-full ${cropped ? "object-fill" : "object-cover object-center"} transition-transform duration-500 group-hover:scale-105`}
+      style={getImageFrameStyle(image)}
+      loading={eager ? "eager" : "lazy"}
+      draggable={false}
+    />
+  );
 }
 
 export default function ProductCard({ product, isRTL, onAddToCart }) {
@@ -24,32 +41,111 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
 
   const outOfStock = Number(product.stock_quantity) <= 0;
 
+  const images = getProductImages(product);
+  const count = images.length;
+  const hasCarousel = count > 1;
+
+  const [index, setIndex] = useState(0);
+  const safeIndex = Math.min(index, Math.max(0, count - 1));
+  const touchStartX = useRef(null);
+
+  // In RTL the "next" (forward) action should advance to a later photo, while
+  // visually the arrow that points in the reading direction (left) means next.
+  const go = (delta) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIndex((i) => {
+      const next = (i + delta + count) % count;
+      return next;
+    });
+  };
+
+  const onTouchStart = (e) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  };
+  const onTouchEnd = (e) => {
+    if (touchStartX.current == null || !hasCarousel) return;
+    const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+    if (Math.abs(dx) < 40) return;
+    // Swipe left -> forward; in RTL the visual direction inverts.
+    const forward = isRTL ? dx > 0 : dx < 0;
+    setIndex((i) => (i + (forward ? 1 : -1) + count) % count);
+    touchStartX.current = null;
+  };
+
   return (
     <div className="group flex flex-col h-full bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
       <Link to={`/product/${product.id}`} className="block relative">
-        <div className="relative aspect-square bg-gray-50 overflow-hidden">
-          <img
-            src={product.image_url || "https://placehold.co/400x400?text=Product"}
-            alt={name}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            loading="lazy"
-          />
+        <div
+          className="relative aspect-[3/4] bg-gray-100 overflow-hidden"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
+          {count > 0 ? (
+            <CardImage image={images[safeIndex]} alt={name} eager={false} />
+          ) : (
+            <img
+              src="https://placehold.co/600x800?text=Product"
+              alt={name}
+              className="w-full h-full object-cover object-center"
+              loading="lazy"
+            />
+          )}
+
           {/* Badges */}
-          <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+          <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
             {discount && <Badge className="bg-red-500 text-white text-xs font-bold px-2 py-0.5">-{discount}%</Badge>}
             {product.is_new && <Badge className="bg-primary text-primary-foreground text-xs font-bold px-2 py-0.5">NEW</Badge>}
             {product.is_bestseller && <Badge className="bg-amber-500 text-white text-xs font-bold px-2 py-0.5">⭐ BEST</Badge>}
             {product.is_trending && <Badge className="bg-purple-500 text-white text-xs font-bold px-2 py-0.5">🔥</Badge>}
           </div>
+
           {product.video_url && !outOfStock && (
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
               <div className="w-12 h-12 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center">
                 <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
               </div>
             </div>
           )}
+
+          {/* Multi-photo carousel controls (only when >1 image) */}
+          {hasCarousel && (
+            <>
+              <button
+                type="button"
+                aria-label={isRTL ? "السابق" : "Previous"}
+                onClick={go(isRTL ? 1 : -1)}
+                className="absolute top-1/2 -translate-y-1/2 left-2 z-20 w-8 h-8 rounded-full bg-white/85 hover:bg-white shadow flex items-center justify-center text-foreground opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity max-md:opacity-100"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                aria-label={isRTL ? "التالي" : "Next"}
+                onClick={go(isRTL ? -1 : 1)}
+                className="absolute top-1/2 -translate-y-1/2 right-2 z-20 w-8 h-8 rounded-full bg-white/85 hover:bg-white shadow flex items-center justify-center text-foreground opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity max-md:opacity-100"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <div
+                className="absolute bottom-2.5 left-0 right-0 z-20 flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity max-md:opacity-100"
+                dir="ltr"
+              >
+                {images.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    aria-label={`${isRTL ? "صورة" : "Image"} ${i + 1}`}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIndex(i); }}
+                    className={`h-1.5 rounded-full transition-all ${i === safeIndex ? "w-4 bg-white" : "w-1.5 bg-white/60"} shadow`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
           {outOfStock && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px] z-10">
               <span className="px-4 py-1.5 rounded-full bg-foreground/80 text-white text-xs font-black uppercase tracking-wide">
                 {isRTL ? "نفذت الكمية" : "Out of Stock"}
               </span>
