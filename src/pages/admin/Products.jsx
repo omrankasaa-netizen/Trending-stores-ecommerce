@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Edit2, Trash2, Search, Image, Upload, X } from "lucide-react";
+import { Plus, Edit2, Trash2, Search, Upload } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
+import ProductImagesEditor from "@/components/admin/ProductImagesEditor";
+import { getProductImages } from "@/lib/productImages";
 
 const CATEGORIES = [
   { label: "حديقة وري", labelEn: "Garden & Irrigation", value: "garden" },
@@ -26,7 +28,7 @@ const CATEGORIES = [
 const EMPTY = {
   name: "", name_ar: "", short_description: "", short_description_ar: "",
   category: "garden", price: "", compare_at_price: "", stock_quantity: "",
-  image_url: "", video_url: "", status: "active",
+  image_url: "", images: [], video_url: "", status: "active",
   is_featured: false, is_trending: false, is_bestseller: false, is_new: false,
 };
 
@@ -52,14 +54,12 @@ export default function AdminProducts() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const { toast } = useToast();
   const location = useLocation();
-  const imageInputRef = useRef();
 
   useEffect(() => {
     base44.entities.Product.list("-created_date", 200).then(setProducts).finally(() => setLoading(false));
@@ -74,15 +74,27 @@ export default function AdminProducts() {
   }, [location.search]);
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
-  const openEdit = (p) => { setEditing(p); setForm({ ...EMPTY, ...p }); setOpen(true); };
+  const openEdit = (p) => {
+    setEditing(p);
+    // Hydrate the images array from the legacy single image_url when needed so
+    // existing products open with their photo already in the gallery editor.
+    const images = getProductImages(p);
+    setForm({ ...EMPTY, ...p, images });
+    setOpen(true);
+  };
 
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   const save = async (addAnother = false) => {
     if (!form.name || !form.price) { toast({ title: "يرجى إدخال الاسم والسعر", variant: "destructive" }); return; }
     setSaving(true);
+    const images = Array.isArray(form.images) ? form.images.filter((i) => i && i.url) : [];
     const data = {
       ...form,
+      images,
+      // Keep legacy single field in sync (first image) so ProductDetail,
+      // related lists, cart and admin thumbnails keep working unchanged.
+      image_url: images[0]?.url || form.image_url || "",
       price: Number(form.price),
       compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
       stock_quantity: form.stock_quantity !== "" ? Number(form.stock_quantity) : null,
@@ -106,15 +118,6 @@ export default function AdminProducts() {
     await base44.entities.Product.delete(id);
     setProducts(prev => prev.filter(p => p.id !== id));
     toast({ title: "تم حذف المنتج" });
-  };
-
-  const uploadImage = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setUploading(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    f("image_url", file_url);
-    setUploading(false);
   };
 
   const uploadVideo = async (e) => {
@@ -332,27 +335,11 @@ export default function AdminProducts() {
               <p className="text-xs text-muted-foreground mt-1">اتركه فارغاً إذا لا تريد تتبع الكمية.</p>
             </div>
 
-            {/* Image Upload */}
-            <div>
-              <Label className="font-black text-base block mb-2">صورة المنتج</Label>
-              {form.image_url ? (
-                <div className="relative w-32 h-32">
-                  <img src={form.image_url} className="w-full h-full object-cover rounded-2xl" />
-                  <button onClick={() => f("image_url", "")} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <label className="cursor-pointer">
-                  <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center hover:border-primary hover:bg-primary/5 transition-colors">
-                    <Image className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm font-bold">{uploading ? "جاري الرفع..." : "اضغط لرفع صورة"}</p>
-                    <p className="text-xs text-muted-foreground">JPG, PNG</p>
-                  </div>
-                  <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={uploadImage} disabled={uploading} />
-                </label>
-              )}
-            </div>
+            {/* Images (multi-photo gallery with per-image 3:4 framing) */}
+            <ProductImagesEditor
+              images={form.images}
+              onChange={(imgs) => f("images", imgs)}
+            />
 
             {/* Video */}
             <div>

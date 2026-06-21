@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { MessageCircle, ShoppingCart, Truck, Shield, RotateCcw, ChevronRight, Plus, Minus, Play } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { formatPrice } from "@/lib/utils";
+import { getProductImages, getImageFrameStyle, hasCrop } from "@/lib/productImages";
 
 const WHATSAPP = "96181751841";
 
@@ -22,6 +23,7 @@ export default function ProductDetail() {
   const [qty, setQty] = useState(1);
   const [showVideo, setShowVideo] = useState(false);
   const [related, setRelated] = useState([]);
+  const [activeImg, setActiveImg] = useState(0);
 
   useEffect(() => {
     base44.entities.Product.filter({ id }).then(([p]) => {
@@ -53,6 +55,9 @@ export default function ProductDetail() {
   const discount = product.compare_at_price && product.compare_at_price > product.price
     ? Math.round((1 - product.price / product.compare_at_price) * 100) : null;
   const outOfStock = Number(product.stock_quantity) <= 0;
+
+  const images = getProductImages(product);
+  const activeImage = images[Math.min(activeImg, Math.max(0, images.length - 1))] || null;
 
   const whatsappMsg = isRTL
     ? `مرحبا، أريد الطلب: ${name} (الكمية: ${qty}) - السعر: ${formatPrice(product.price * qty)}`
@@ -86,9 +91,10 @@ export default function ProductDetail() {
               ) : (
                 <>
                   <img
-                    src={product.image_url || "https://placehold.co/600x600"}
+                    src={activeImage?.url || product.image_url || "https://placehold.co/600x600"}
                     alt={name}
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full ${hasCrop(activeImage) ? "object-fill" : "object-cover object-center"}`}
+                    style={getImageFrameStyle(activeImage)}
                   />
                   {product.video_url && (
                     <button
@@ -119,6 +125,27 @@ export default function ProductDetail() {
                 </div>
                 {t("Watch product demo", "شاهد فيديو المنتج")}
               </button>
+            )}
+
+            {images.length > 1 && (
+              <div className="flex gap-2 flex-wrap">
+                {images.map((img, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setActiveImg(i); setShowVideo(false); }}
+                    className={`relative w-16 aspect-[3/4] rounded-xl overflow-hidden border-2 transition-colors ${i === activeImg && !showVideo ? "border-primary" : "border-transparent"}`}
+                    aria-label={`${t("Image", "صورة")} ${i + 1}`}
+                  >
+                    <img
+                      src={img.url}
+                      alt=""
+                      className={`w-full h-full ${hasCrop(img) ? "object-fill" : "object-cover object-center"}`}
+                      style={getImageFrameStyle(img)}
+                      loading="lazy"
+                    />
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
