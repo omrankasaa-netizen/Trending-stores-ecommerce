@@ -15,7 +15,7 @@ import {
   getUserFromRequest, publicUser, findUserByEmail, setPassword, changePassword, updateUser,
   issueOtp, verifyOtp as verifyOtpCode,
 } from './auth.js';
-import { invokeFunction } from './functions.js';
+import { invokeFunction, isSuperAdmin } from './functions.js';
 import { sendEmail } from './email.js';
 import { runSeed } from './seed.js';
 import { optimizeAndStore, bufferFromBase64 } from './imageOptimize.js';
@@ -314,20 +314,51 @@ function sanitize(entity, record) {
   return record;
 }
 
+// Internal money/revenue/cost fields that must never reach a non-super_admin
+// reader through the generic entity read path. Public selling prices are
+// intentionally EXCLUDED — Product.price/compare_at_price and Coupon.value are
+// storefront-facing and the catalog/checkout depend on them. We only redact
+// internal figures: order revenue, internal product cost, and derived customer
+// lifetime value. The buyer still gets full totals from Order.create (the POST
+// path), and there is no customer self-service order list to break.
+const REDACTED_MONEY_FIELDS = {
+  Order: ['subtotal', 'discount', 'delivery_fee', 'total', 'grand_total', 'grand_total_usd', 'shipping_cost', 'tax'],
+  Product: ['cost', 'cost_price', 'cost_usd'],
+  Customer: ['total_spent', 'total_spent_usd', 'aov'],
+};
+
+function redactMoney(entity, record, user) {
+  if (!record || isSuperAdmin(user)) return record;
+  const fields = REDACTED_MONEY_FIELDS[entity];
+  if (!fields) return record;
+  const out = { ...record };
+  for (const f of fields) delete out[f];
+  // Order line items embed a per-unit selling price that reveals order value.
+  if (entity === 'Order' && Array.isArray(out.items)) {
+    out.items = out.items.map((it) => {
+      if (it && typeof it === 'object') { const { price, ...rest } = it; return rest; }
+      return it;
+    });
+  }
+  return out;
+}
+
 app.get('/api/entities/:entity', ensureEntity, (req, res) => {
   try {
+    const user = getUserFromRequest(req);
     const { query, sort, limit } = parseListParams(req);
     const records = queryRecords(req.params.entity, { query, sort, limit })
-      .map((r) => sanitize(req.params.entity, r));
+      .map((r) => redactMoney(req.params.entity, sanitize(req.params.entity, r), user));
     res.json(records);
   } catch (e) { handleError(res, e); }
 });
 
 app.get('/api/entities/:entity/:id', ensureEntity, (req, res) => {
   try {
+    const user = getUserFromRequest(req);
     const record = getRecord(req.params.entity, req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
-    res.json(sanitize(req.params.entity, record));
+    res.json(redactMoney(req.params.entity, sanitize(req.params.entity, record), user));
   } catch (e) { handleError(res, e); }
 });
 
