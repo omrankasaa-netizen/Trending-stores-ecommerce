@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
-import { getProductImages, getImageFrameStyle, hasCrop } from "@/lib/productImages";
+import { getProductImages, getImageFrameStyle, hasCrop, imageSrc } from "@/lib/productImages";
 
 const WHATSAPP = "96181751841";
 
@@ -21,11 +21,12 @@ function CardImage({ image, alt, eager }) {
   const cropped = hasCrop(image);
   return (
     <img
-      src={image?.url || "https://placehold.co/600x800?text=Product"}
+      src={imageSrc(image, "card") || "https://placehold.co/600x800?text=Product"}
       alt={alt}
       className={`w-full h-full ${cropped ? "object-fill" : "object-cover object-center"} transition-transform duration-500 group-hover:scale-105`}
       style={getImageFrameStyle(image)}
       loading={eager ? "eager" : "lazy"}
+      decoding="async"
       draggable={false}
     />
   );

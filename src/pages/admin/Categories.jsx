@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-import { Plus, Edit2, Trash2, Image, FolderOpen } from "lucide-react";
+import { Plus, Edit2, Trash2, Image, FolderOpen, Sparkles } from "lucide-react";
 
 const EMPTY = { name: "", name_ar: "", slug: "", image_url: "", display_order: 0, is_visible: true };
 
@@ -19,6 +19,7 @@ export default function AdminCategories() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -54,6 +55,21 @@ export default function AdminCategories() {
     toast({ title: "تم حذف الفئة" });
   };
 
+  const cleanup = async () => {
+    if (!confirm("إزالة الفئات المكرّرة والفارغة؟")) return;
+    setCleaning(true);
+    try {
+      const res = await base44.functions.cleanupCategories();
+      toast({ title: "تم التنظيف", description: `مكرّر: ${res?.removed_duplicates || 0} · فارغ: ${res?.removed_empty || 0}` });
+      const fresh = await base44.entities.Category.list("display_order", 50);
+      setCategories(fresh);
+    } catch (e) {
+      toast({ title: "تعذّر التنظيف", description: e?.data?.error || e?.message, variant: "destructive" });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   const uploadImage = async (e) => {
     const file = e.target.files[0]; if (!file) return;
     setUploading(true);
@@ -74,9 +90,14 @@ export default function AdminCategories() {
           <h1 className="text-2xl font-black">الفئات</h1>
           <p className="text-sm text-muted-foreground mt-1">أدر فئات المتجر</p>
         </div>
-        <Button onClick={openNew} className="gap-2 rounded-xl h-11">
-          <Plus className="w-4 h-4" />إضافة فئة
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={cleanup} disabled={cleaning} className="gap-2 rounded-xl h-11">
+            <Sparkles className="w-4 h-4" />{cleaning ? "..." : "تنظيف"}
+          </Button>
+          <Button onClick={openNew} className="gap-2 rounded-xl h-11">
+            <Plus className="w-4 h-4" />إضافة فئة
+          </Button>
+        </div>
       </div>
 
       <Card className="border-0 shadow-sm">

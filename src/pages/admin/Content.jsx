@@ -99,6 +99,7 @@ export default function AdminContent() {
         <TabsList className="bg-gray-100 rounded-xl mb-6">
           <TabsTrigger value="banners" className="rounded-lg">البانرات</TabsTrigger>
           <TabsTrigger value="announcement" className="rounded-lg">شريط الإعلانات</TabsTrigger>
+          <TabsTrigger value="pages" className="rounded-lg">الصفحات</TabsTrigger>
         </TabsList>
 
         {/* Banners */}
@@ -148,6 +149,11 @@ export default function AdminContent() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Legal / About pages (CmsSection) */}
+        <TabsContent value="pages">
+          <CmsPagesTab toast={toast} />
         </TabsContent>
       </Tabs>
 
@@ -201,6 +207,96 @@ export default function AdminContent() {
             <Button onClick={saveBanner} disabled={saving} className="flex-1 rounded-xl font-black">
               {saving ? "جاري الحفظ..." : "💾 حفظ البانر"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Editor for legal/about pages stored as CmsSection rows (seeded server-side).
+// Lets admins edit bilingual title + markdown body and toggle visibility.
+function CmsPagesTab({ toast }) {
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    base44.entities.CmsSection.list("section_key", 100)
+      .then((rows) => setSections(rows || []))
+      .catch(() => setSections([]))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const openEdit = (s) => { setEditing(s); setForm({ ...s }); };
+  const fld = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await base44.entities.CmsSection.update(editing.id, {
+        title: form.title, title_ar: form.title_ar,
+        body: form.body, body_ar: form.body_ar,
+        is_visible: form.is_visible !== false,
+      });
+      toast({ title: "✅ تم حفظ الصفحة" });
+      setEditing(null);
+      load();
+    } catch (e) {
+      toast({ title: "تعذّر الحفظ", description: e?.data?.error || e?.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center text-muted-foreground">جاري التحميل...</div>;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">عدّل صفحات السياسات والمعلومات (الخصوصية، الشروط، الشحن، الإرجاع، من نحن)</p>
+      {sections.map((s) => (
+        <Card key={s.id} className="border-0 shadow-sm">
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm truncate">{s.title_ar || s.title || s.section_key}</div>
+              <div className="text-xs text-muted-foreground" dir="ltr">{s.section_key}</div>
+            </div>
+            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openEdit(s)}><Edit2 className="w-4 h-4" /></Button>
+          </CardContent>
+        </Card>
+      ))}
+      {sections.length === 0 && <div className="p-12 text-center text-muted-foreground">لا توجد صفحات</div>}
+
+      <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+          <DialogHeader><DialogTitle className="font-black">تعديل الصفحة</DialogTitle></DialogHeader>
+          {form && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="font-bold">العنوان (عربي)</Label><Input className="mt-1 text-right" value={form.title_ar || ""} onChange={(e) => fld("title_ar", e.target.value)} style={{ direction: "rtl" }} /></div>
+                <div><Label className="font-bold">العنوان (English)</Label><Input className="mt-1" value={form.title || ""} onChange={(e) => fld("title", e.target.value)} style={{ direction: "ltr" }} /></div>
+              </div>
+              <div>
+                <Label className="font-bold">المحتوى (عربي) — Markdown</Label>
+                <textarea className="mt-1 w-full min-h-[180px] rounded-md border border-input bg-background p-3 text-sm text-right" dir="rtl" value={form.body_ar || ""} onChange={(e) => fld("body_ar", e.target.value)} />
+              </div>
+              <div>
+                <Label className="font-bold">المحتوى (English) — Markdown</Label>
+                <textarea className="mt-1 w-full min-h-[180px] rounded-md border border-input bg-background p-3 text-sm" dir="ltr" value={form.body || ""} onChange={(e) => fld("body", e.target.value)} />
+              </div>
+              <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
+                <Switch checked={form.is_visible !== false} onCheckedChange={(v) => fld("is_visible", v)} />
+                <span className="font-bold text-sm">ظاهرة للعملاء</span>
+              </div>
+            </div>
+          )}
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" onClick={() => setEditing(null)} className="rounded-xl">إلغاء</Button>
+            <Button onClick={save} disabled={saving} className="flex-1 rounded-xl font-black">{saving ? "..." : "💾 حفظ"}</Button>
           </div>
         </DialogContent>
       </Dialog>

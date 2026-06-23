@@ -52,6 +52,9 @@ export const db = _db;
 export const ENTITIES = [
   'Product', 'Category', 'Order', 'Banner', 'SiteSettings',
   'Testimonial', 'User', 'Discount', 'Coupon', 'EmailLog',
+  // Added for the MiniYo improvements port: customers, audit trail, CMS pages,
+  // and FAQs. Customers are derived from Orders but can also be stored/edited.
+  'Customer', 'AuditLog', 'CmsSection', 'Faq',
 ];
 
 function tableFor(entity) {

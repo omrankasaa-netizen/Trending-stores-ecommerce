@@ -108,9 +108,10 @@ export default function Footer() {
             <ul className="flex flex-col gap-2.5">
               {[
                 { en: "About Us", ar: "من نحن", to: "/about" },
-                { en: "Delivery & Returns", ar: "التوصيل والإرجاع", to: "/delivery" },
+                { en: "FAQ", ar: "الأسئلة الشائعة", to: "/faq" },
+                { en: "Shipping Policy", ar: "سياسة الشحن", to: "/shipping" },
+                { en: "Returns & Exchanges", ar: "الإرجاع والاستبدال", to: "/returns" },
                 { en: "Contact Us", ar: "تواصل معنا", to: "/contact" },
-                { en: "Search", ar: "بحث", to: "/search" },
               ].map((item, i) => (
                 <li key={i}>
                   <Link to={item.to} className="text-primary-foreground/70 hover:text-primary-foreground text-sm transition-colors"
@@ -208,6 +209,12 @@ export default function Footer() {
             </Link>
             <Link to="/contact" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
               {t("Contact", "تواصل")}
+            </Link>
+            <Link to="/privacy" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+              {t("Privacy", "الخصوصية")}
+            </Link>
+            <Link to="/terms" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+              {t("Terms", "الشروط")}
             </Link>
             <div className="flex items-center gap-2 text-primary-foreground/50">
               <span style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>

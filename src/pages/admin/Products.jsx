@@ -9,8 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Edit2, Trash2, Search, Upload } from "lucide-react";
+import { Plus, Edit2, Trash2, Search, Upload, Download } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { exportViaFunction } from "@/lib/exportCsv";
 import { useToast } from "@/components/ui/use-toast";
 import ProductImagesEditor from "@/components/admin/ProductImagesEditor";
 import { getProductImages } from "@/lib/productImages";
@@ -144,10 +145,16 @@ export default function AdminProducts() {
           <h1 className="text-2xl font-black">المنتجات</h1>
           <p className="text-muted-foreground text-sm mt-1">{products.length} منتج</p>
         </div>
-        <Button onClick={openNew} className="gap-2 rounded-xl h-11">
-          <Plus className="w-4 h-4" />
-          إضافة منتج
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => exportViaFunction("exportProductsCsv").catch(() => toast({ title: "تعذّر التصدير", variant: "destructive" }))} className="gap-2 rounded-xl h-11">
+            <Download className="w-4 h-4" />
+            تصدير
+          </Button>
+          <Button onClick={openNew} className="gap-2 rounded-xl h-11">
+            <Plus className="w-4 h-4" />
+            إضافة منتج
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
