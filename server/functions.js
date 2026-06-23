@@ -1,4 +1,4 @@
-import { getRecord, updateRecord, queryRecords, nowIso } from './db.js';
+import { getRecord, createRecord, updateRecord, queryRecords, nowIso } from './db.js';
 import { sendEmail } from './email.js';
 
 // ─── Brand / email constants ────────────────────────────────────────────────
@@ -267,13 +267,132 @@ async function sendWelcomeEmailNew(body) {
   return { status: result.status, log_id: result.log_id };
 }
 
+// ─── Role helpers ────────────────────────────────────────────────────────────
+export function isAdmin(user) {
+  return !!user && (user.role === 'admin' || user.role === 'super_admin');
+}
+
+// Finance/profit + user management is owner-only — restricted to super_admin.
+export function isSuperAdmin(user) {
+  return !!user && user.role === 'super_admin';
+}
+
+// ─── User & role management (super-admin only via central guard) ─────────────
+const VALID_ROLES = ['customer', 'staff', 'admin', 'super_admin'];
+
+// Strip credential-bearing fields before returning a user over the API.
+function publicUserRecord(u) {
+  if (!u) return null;
+  const { password_hash, otp_hash, otp_expires_at, otp_attempts, ...rest } = u;
+  return rest;
+}
+
+function listUsers() {
+  const users = queryRecords('User', { sort: '-created_date', limit: 2000 });
+  return { users: users.map(publicUserRecord) };
+}
+
+// Write an AuditLog row for a sensitive admin action.
+function writeAudit({ action, entity, entityId, actor, details }) {
+  try {
+    createRecord('AuditLog', {
+      action,
+      entity,
+      entity_id: entityId || '',
+      user_name: actor || 'system',
+      created_at: nowIso(),
+      details: details || '',
+    });
+  } catch (e) {
+    console.error('[audit] failed to write entry:', e?.message);
+  }
+}
+
+// Promote/demote a user's role. Super-admin only (central guard). Refuses to
+// remove the LAST super admin so the store always keeps an owner, and records
+// an AuditLog entry capturing old → new role.
+function setUserRole(body, user) {
+  const { user_id, role } = body || {};
+  if (!user_id || !role) return { _status: 400, error: 'user_id and role are required' };
+  if (!VALID_ROLES.includes(role)) {
+    return { _status: 400, error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` };
+  }
+  const target = getRecord('User', user_id);
+  if (!target) return { _status: 404, error: 'User not found' };
+
+  const oldRole = target.role;
+  if (oldRole === role) {
+    return { ok: true, unchanged: true, user: publicUserRecord(target) };
+  }
+
+  // Guard the last super admin: never let the count drop to zero.
+  if (oldRole === 'super_admin' && role !== 'super_admin') {
+    const superCount = queryRecords('User', { query: { role: 'super_admin' } }).length;
+    if (superCount <= 1) {
+      return { _status: 409, error: 'Cannot remove the last super admin. Promote another user to super admin first.' };
+    }
+  }
+
+  const updated = updateRecord('User', user_id, { role });
+  writeAudit({
+    action: 'role_changed',
+    entity: 'User',
+    entityId: user_id,
+    actor: user?.full_name || user?.email || 'unknown',
+    details: `${target.email || user_id}: ${oldRole || 'none'} → ${role}`,
+  });
+  return { ok: true, user: publicUserRecord(updated), old_role: oldRole, new_role: role };
+}
+
+function listAuditLog(body) {
+  const limit = Math.min(Number(body?.limit) || 500, 2000);
+  const logs = queryRecords('AuditLog', { sort: '-created_at', limit });
+  return { logs };
+}
+
 const REGISTRY = {
   commitStock,
   sendOrderConfirmation,
   sendOrderNotification,
   sendOrderStatusUpdate,
   sendWelcomeEmailNew,
+  listUsers,
+  setUserRole,
+  listAuditLog,
 };
+
+// ─── Centralized authorization ───────────────────────────────────────────────
+// Every function declares its required access level in ONE place instead of
+// repeating inline role checks. Levels:
+//   'public'      — no auth required (storefront/checkout-triggered flows)
+//   'auth'        — any authenticated user
+//   'admin'       — admin or super_admin
+//   'super_admin' — super_admin only (finance + user management)
+// Unlisted functions default to 'admin' (fail-safe, never 'public').
+const GUARDS = {
+  commitStock: 'public',
+  sendOrderConfirmation: 'public',
+  sendOrderNotification: 'public',
+  sendOrderStatusUpdate: 'public',
+  sendWelcomeEmailNew: 'public',
+  listAuditLog: 'super_admin',
+  listUsers: 'super_admin',
+  setUserRole: 'super_admin',
+};
+
+// Returns a 401/403 error object when the user fails the level, else null.
+export function authorizeFunction(level, user) {
+  if (level === 'public') return null;
+  if (!user) return { _status: 401, error: 'Authentication required' };
+  if (level === 'auth') return null;
+  if (level === 'admin') {
+    return isAdmin(user) ? null : { _status: 403, error: 'Forbidden: admin access required' };
+  }
+  if (level === 'super_admin') {
+    return isSuperAdmin(user) ? null : { _status: 403, error: 'Forbidden: super admin access required' };
+  }
+  return { _status: 403, error: 'Forbidden' };
+}
 
 export async function invokeFunction(name, body, user) {
   const fn = REGISTRY[name];
@@ -282,5 +401,7 @@ export async function invokeFunction(name, body, user) {
     err.status = 404;
     throw err;
   }
+  const denied = authorizeFunction(GUARDS[name] || 'admin', user);
+  if (denied) return denied;
   return await fn(body || {}, user);
 }

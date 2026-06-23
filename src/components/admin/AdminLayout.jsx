@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, ShoppingBag, Package, BarChart2, FolderOpen, Home, Settings, Mail, Menu, X, ExternalLink, ChevronRight, Percent
+  LayoutDashboard, ShoppingBag, Package, BarChart2, FolderOpen, Home, Settings, Mail, Menu, X, ExternalLink, ChevronRight, Percent, Shield, ScrollText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Outlet } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 
 const NAV = [
   { label: "لوحة التحكم", labelEn: "Dashboard",    path: "/admin",            icon: LayoutDashboard },
@@ -20,6 +21,12 @@ const NAV = [
   { label: "الإعدادات",   labelEn: "Settings",        path: "/admin/settings",   icon: Settings },
 ];
 
+// Owner-only entries appended for super_admin users.
+const SUPER_ADMIN_NAV = [
+  { label: "الفريق والصلاحيات", labelEn: "Team & Roles", path: "/admin/team",  icon: Shield },
+  { label: "سجل التدقيق",       labelEn: "Audit Log",    path: "/admin/audit", icon: ScrollText },
+];
+
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -27,6 +34,8 @@ export default function AdminLayout() {
   const [searching, setSearching] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const navItems = user?.role === "super_admin" ? [...NAV, ...SUPER_ADMIN_NAV] : NAV;
 
   const handleSearch = async (q) => {
     setSearch(q);
@@ -64,7 +73,7 @@ export default function AdminLayout() {
         </div>
       </div>
       <nav className="flex-1 p-3 overflow-y-auto">
-        {NAV.map(item => {
+        {navItems.map(item => {
           const active = location.pathname === item.path || (item.path !== "/admin" && location.pathname.startsWith(item.path));
           return (
             <Link

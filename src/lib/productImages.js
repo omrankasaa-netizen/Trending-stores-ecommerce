@@ -10,17 +10,79 @@
 
 const PLACEHOLDER = "https://placehold.co/600x800?text=Product";
 
+// ── Cloudflare on-the-fly image resizing ─────────────────────────────────────
+// Trending product images live on Cloudflare R2 behind a custom image domain.
+// Rather than ship a multi-MB original to a 200px grid slot, we route the URL
+// through Cloudflare's image-resizing endpoint (/cdn-cgi/image/<opts>/<orig>).
+// Cloudflare resizes once, re-encodes to the best modern format (AVIF/WebP), and
+// edge-caches each size. The original file is never modified.
+//
+// Requires "Image Resizing/Transformations" enabled on the Cloudflare zone. It
+// is GATED: set CF_IMAGE_RESIZE = false to instantly revert to originals, and we
+// ONLY rewrite URLs whose host is listed in CF_RESIZE_HOSTS. Trending's own R2
+// custom image domain goes in that set (e.g. "images.trendingstore.store"); it
+// is left EMPTY by default so nothing breaks until the owner adds their domain.
+const CF_IMAGE_RESIZE = true;
+const CF_RESIZE_HOSTS = new Set([
+  // Add Trending Store's own Cloudflare R2 image domain here once known, e.g.:
+  // "images.trendingstore.store",
+]);
+const CF_SIZE_WIDTH = { thumb: 320, card: 600, large: 1200 };
+
+function cfResize(url, size) {
+  if (!CF_IMAGE_RESIZE || !url) return url;
+  if (!/^https?:\/\//i.test(url)) return url;       // skip data:/blob:/relative
+  if (url.includes("/cdn-cgi/image/")) return url;  // already transformed
+  let u;
+  try { u = new URL(url); } catch { return url; }
+  if (!CF_RESIZE_HOSTS.has(u.host)) return url;      // only our R2 host(s)
+  const width = CF_SIZE_WIDTH[size] || CF_SIZE_WIDTH.card;
+  const opts = `width=${width},quality=80,format=auto,fit=scale-down`;
+  return `${u.origin}/cdn-cgi/image/${opts}${u.pathname}${u.search}`;
+}
+
+// Pick the best derivative URL for a desired size from a normalized image, then
+// route through Cloudflare resizing. Variant-aware (uses image.variants when the
+// upload produced large/card/thumb webp derivatives); falls back to the single
+// canonical URL for legacy/string images.
+export function imageSrc(image, size = "card") {
+  const img = normalizeImage(image);
+  if (!img) return PLACEHOLDER;
+  const v = img.variants;
+  if (v) {
+    const order = {
+      large: ["large", "card", "thumb"],
+      card: ["card", "large", "thumb"],
+      thumb: ["thumb", "card", "large"],
+    }[size] || ["card", "large", "thumb"];
+    for (const k of order) if (v[k]) return v[k];
+  }
+  return cfResize(img.url, size);
+}
+
+// Right-size a single CMS/banner/icon URL (which stores only one canonical
+// .../card.webp). Swaps to the sibling derivative for the requested size when it
+// is one of our generated variants, then Cloudflare-resizes as a final step.
+export function cmsImageSrc(rawUrl, size = "large") {
+  const url = typeof rawUrl === "string" ? rawUrl : (rawUrl?.url || "");
+  if (!url) return "";
+  const swapped = url.replace(/\/(large|card|thumb)\.webp(\?.*)?$/i,
+    (_m, _old, q) => `/${size}.webp${q || ""}`);
+  return cfResize(swapped, size);
+}
+
 // Normalize one stored image entry (string URL or object) into a full object.
 function normalizeImage(entry) {
   if (!entry) return null;
   if (typeof entry === "string") {
-    return entry ? { url: entry, focal: null, crop: null } : null;
+    return entry ? { url: entry, focal: null, crop: null, variants: null } : null;
   }
   if (typeof entry === "object" && entry.url) {
     return {
       url: entry.url,
       focal: entry.focal || null,
       crop: entry.crop || null,
+      variants: entry.variants && typeof entry.variants === "object" ? entry.variants : null,
     };
   }
   return null;

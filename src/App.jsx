@@ -16,6 +16,8 @@ import About from './pages/About';
 import Delivery from './pages/Delivery';
 import Contact from './pages/Contact';
 import Search from './pages/Search';
+import CmsPage from './pages/CmsPage';
+import Faq from './pages/Faq';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducts from './pages/admin/Products';
 import AdminOrders from './pages/admin/Orders';
@@ -26,6 +28,8 @@ import AdminDiscounts from './pages/admin/Discounts';
 import AdminContent from './pages/admin/Content';
 import AdminSettings from './pages/admin/Settings';
 import AdminEmailLog from './pages/admin/EmailLog';
+import AdminTeam from './pages/admin/Team';
+import AdminAuditLog from './pages/admin/AuditLog';
 import AdminLayout from './components/admin/AdminLayout';
 import Layout from './components/Layout';
 
@@ -61,6 +65,11 @@ const AuthenticatedApp = () => {
         <Route path="/delivery" element={<Delivery />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/search" element={<Search />} />
+        <Route path="/faq" element={<Faq />} />
+        <Route path="/privacy" element={<CmsPage sectionKey="legal_privacy" fallbackTitle="Privacy Policy" fallbackTitleAr="سياسة الخصوصية" />} />
+        <Route path="/terms" element={<CmsPage sectionKey="legal_terms" fallbackTitle="Terms & Conditions" fallbackTitleAr="الشروط والأحكام" />} />
+        <Route path="/shipping" element={<CmsPage sectionKey="legal_shipping" fallbackTitle="Shipping Policy" fallbackTitleAr="سياسة الشحن" />} />
+        <Route path="/returns" element={<CmsPage sectionKey="legal_returns" fallbackTitle="Returns & Exchanges" fallbackTitleAr="الإرجاع والاستبدال" />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
       </Route>
@@ -78,6 +87,14 @@ const AuthenticatedApp = () => {
           <Route path="content" element={<AdminContent />} />
           <Route path="settings" element={<AdminSettings />} />
           <Route path="emails" element={<AdminEmailLog />} />
+        </Route>
+      </Route>
+
+      {/* Super-admin-only admin routes (Team & Roles, Audit Log) */}
+      <Route element={<ProtectedRoute requireAdmin requireSuperAdmin unauthenticatedElement={<Navigate to="/login" replace />} />}>
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route path="team" element={<AdminTeam />} />
+          <Route path="audit" element={<AdminAuditLog />} />
         </Route>
       </Route>
 

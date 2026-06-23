@@ -3,8 +3,27 @@ import {
   createRecord, queryRecords, countRecords, kvGet, kvSet, bulkCreate, updateRecord,
 } from './db.js';
 import { registerUser, findUserByEmail } from './auth.js';
+import { seedLegalPages, seedFaqs } from './seedContent.js';
 
 const SEED_VERSION = '1';
+
+// Owner of all sibling stores — always promoted to super_admin.
+const OWNER_SUPER_ADMIN = 'omraniik@gmail.com';
+
+// Idempotently promote owner + TRENDING_SUPER_ADMIN_EMAILS to super_admin.
+// Only ever PROMOTES (never downgrades) so manual demotions stick.
+function seedSuperAdmins() {
+  const envList = String(process.env.TRENDING_SUPER_ADMIN_EMAILS || '')
+    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  const emails = [...new Set([OWNER_SUPER_ADMIN.toLowerCase(), ...envList])];
+  for (const email of emails) {
+    const user = findUserByEmail(email);
+    if (user && user.role !== 'super_admin') {
+      updateRecord('User', user.id, { role: 'super_admin', email_verified: true });
+      console.log(`[seed] promoted ${email} to super_admin`);
+    }
+  }
+}
 
 function idFromSlug(prefix, slug) {
   const h = crypto.createHash('sha1').update(`${prefix}:${slug}`).digest('hex').slice(0, 24);
@@ -152,12 +171,18 @@ function seedSiteSettings() {
 export function runSeed() {
   if (kvGet('seed_version') === SEED_VERSION) {
     seedAdmin();
+    seedSuperAdmins();
     seedSiteSettings();
+    seedLegalPages();
+    seedFaqs();
     return;
   }
   seedAdmin();
+  seedSuperAdmins();
   seedSiteSettings();
   seedCatalog();
+  seedLegalPages();
+  seedFaqs();
   kvSet('seed_version', SEED_VERSION);
   console.log('[seed] complete');
 }

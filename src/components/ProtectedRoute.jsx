@@ -13,7 +13,7 @@ const DefaultFallback = () => (
 
 // Renders nested routes only for authenticated users. When `requireAdmin` is set,
 // the user must additionally carry an admin role, otherwise they are sent home.
-export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthenticatedElement, requireAdmin = false }) {
+export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthenticatedElement, requireAdmin = false, requireSuperAdmin = false }) {
   const { user, isAuthenticated, isLoadingAuth, authChecked, authError, checkUserAuth } = useAuth();
 
   useEffect(() => {
@@ -35,6 +35,10 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
 
   if (!isAuthenticated) {
     return unauthenticatedElement;
+  }
+
+  if (requireSuperAdmin && user?.role !== 'super_admin') {
+    return <Navigate to="/admin" replace />;
   }
 
   if (requireAdmin && !ADMIN_ROLES.includes(user?.role)) {

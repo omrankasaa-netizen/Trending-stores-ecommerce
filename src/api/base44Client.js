@@ -71,6 +71,7 @@ function entityApi(name) {
 const ENTITY_NAMES = [
   'Product', 'Category', 'Order', 'Banner', 'SiteSettings',
   'Testimonial', 'User', 'Discount', 'Coupon', 'EmailLog',
+  'Customer', 'AuditLog', 'CmsSection', 'Faq',
 ];
 
 const entities = {};

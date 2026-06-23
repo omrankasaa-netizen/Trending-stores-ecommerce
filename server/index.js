@@ -18,6 +18,7 @@ import {
 import { invokeFunction } from './functions.js';
 import { sendEmail } from './email.js';
 import { runSeed } from './seed.js';
+import { optimizeAndStore, bufferFromBase64 } from './imageOptimize.js';
 
 // Build the verification-code email HTML (Trending Store branding).
 function otpEmailHtml(code) {
@@ -207,6 +208,17 @@ app.post('/api/users/invite', (req, res) => {
     }
     const { email, role = 'staff' } = req.body || {};
     if (!email) return res.status(400).json({ error: 'email required' });
+    const VALID_INVITE_ROLES = ['customer', 'staff', 'admin', 'super_admin'];
+    if (!VALID_INVITE_ROLES.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+    // A regular admin may only invite/assign staff (or customer). Granting
+    // admin or super_admin requires super_admin. This mirrors the central
+    // RBAC guard so privilege escalation can't happen via the invite path.
+    const elevated = role === 'admin' || role === 'super_admin';
+    if (elevated && actor.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Forbidden: only a super admin can grant admin or super admin roles' });
+    }
     let user = findUserByEmail(email);
     if (!user) {
       const tempPassword = crypto.randomUUID();
@@ -232,26 +244,28 @@ app.post('/api/functions/:name', async (req, res) => {
 });
 
 // ─── File upload (base64 JSON) ──────────────────────────────────────────────
-// Accepts { file } where file is a base64 string or data URL, and writes it to
-// the uploads dir. Returns { file_url }.
-app.post('/api/upload', (req, res) => {
+// Accepts { file } where file is a base64 string or data URL. Every upload flows
+// through optimizeAndStore(): sharp compresses + resizes to WebP variants which
+// are written to R2 (when configured) or local disk. Returns the canonical
+// `file_url` (back-compat) plus `url`, `variants`, and framing metadata so the
+// frontend can request the right derivative and Cloudflare-resize it.
+app.post('/api/upload', async (req, res) => {
   try {
     const user = getUserFromRequest(req);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const { file, filename } = req.body || {};
     if (!file) return res.status(400).json({ error: 'file required' });
-    // Derive an extension from a data URL mime type if present.
     let ext = '';
     const mimeMatch = String(file).match(/^data:([^;,]+)[;,]/);
     if (mimeMatch) {
       const sub = mimeMatch[1].split('/')[1];
       if (sub) ext = '.' + sub.replace(/[^a-zA-Z0-9]/g, '');
     }
-    const base = (filename || `upload${ext}`).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const name = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${base}`;
-    const data = String(file).includes(',') ? String(file).split(',')[1] : String(file);
-    fs.writeFileSync(path.join(UPLOAD_DIR, name), Buffer.from(data, 'base64'));
-    res.json({ file_url: `/uploads/${name}` });
+    const safeName = (filename || `upload${ext}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const buffer = bufferFromBase64(String(file));
+    const descriptor = await optimizeAndStore(buffer, safeName);
+    // file_url stays the canonical (card) URL so existing callers keep working.
+    res.json({ file_url: descriptor.url, ...descriptor });
   } catch (e) { handleError(res, e); }
 });
 
