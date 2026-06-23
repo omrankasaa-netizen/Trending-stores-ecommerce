@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Search, Check, Edit2 } from "lucide-react";
+import { Search, Check, Edit2, Download } from "lucide-react";
+import { exportViaFunction } from "@/lib/exportCsv";
 
 export default function AdminInventory() {
   const [products, setProducts] = useState([]);
@@ -48,9 +49,15 @@ export default function AdminInventory() {
 
   return (
     <div dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
-      <div className="mb-6">
-        <h1 className="text-2xl font-black">المخزون</h1>
-        <p className="text-sm text-muted-foreground mt-1">راقب وحدّث كميات المنتجات</p>
+      <div className="mb-6 flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-black">المخزون</h1>
+          <p className="text-sm text-muted-foreground mt-1">راقب وحدّث كميات المنتجات</p>
+        </div>
+        <Button variant="outline" onClick={() => exportViaFunction("exportInventoryCsv").catch(() => toast({ title: "تعذّر التصدير", variant: "destructive" }))} className="gap-2 rounded-xl h-11">
+          <Download className="w-4 h-4" />
+          تصدير
+        </Button>
       </div>
 
       {/* Summary Cards */}

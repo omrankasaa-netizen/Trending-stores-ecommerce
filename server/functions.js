@@ -1,4 +1,4 @@
-import { getRecord, createRecord, updateRecord, queryRecords, nowIso } from './db.js';
+import { getRecord, createRecord, updateRecord, deleteRecord, queryRecords, nowIso, kvGet, kvSet } from './db.js';
 import { sendEmail } from './email.js';
 
 // ─── Brand / email constants ────────────────────────────────────────────────
@@ -350,6 +350,203 @@ function listAuditLog(body) {
   return { logs };
 }
 
+// ─── Financials (super-admin only) ───────────────────────────────────────────
+// Projected revenue and gross-profit estimate from current inventory, plus an
+// editable overheads list. Owner-only via the central guard, so cost/profit
+// figures never reach a non-super-admin browser.
+const FIN_CONFIG_KEY = 'financials_config';
+const DEFAULT_OVERHEAD_ROWS = [
+  { label: 'Packaging', qty: 0, unit_price: 0 },
+  { label: 'Marketing', qty: 0, unit_price: 0 },
+];
+
+function defaultFinancialsConfig() {
+  return { currency_label: 'USD', default_cost_ratio: 0.6, overhead_rows: DEFAULT_OVERHEAD_ROWS };
+}
+
+function getFinancialsConfig() {
+  const raw = kvGet(FIN_CONFIG_KEY);
+  if (!raw) return defaultFinancialsConfig();
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      currency_label: parsed.currency_label || 'USD',
+      default_cost_ratio: Number.isFinite(Number(parsed.default_cost_ratio)) ? Number(parsed.default_cost_ratio) : 0.6,
+      overhead_rows: Array.isArray(parsed.overhead_rows) ? parsed.overhead_rows : DEFAULT_OVERHEAD_ROWS,
+    };
+  } catch {
+    return defaultFinancialsConfig();
+  }
+}
+
+function saveFinancialsConfig(body) {
+  const rows = Array.isArray(body?.overhead_rows) ? body.overhead_rows : [];
+  let ratio = Number(body?.default_cost_ratio);
+  if (!Number.isFinite(ratio) || ratio < 0) ratio = 0.6;
+  if (ratio > 1) ratio = 1;
+  const clean = {
+    currency_label: String(body?.currency_label || 'USD').slice(0, 16) || 'USD',
+    default_cost_ratio: ratio,
+    overhead_rows: rows.map((r) => ({
+      label: String(r?.label ?? '').slice(0, 120),
+      qty: Number(r?.qty) || 0,
+      unit_price: Number(r?.unit_price) || 0,
+    })),
+  };
+  kvSet(FIN_CONFIG_KEY, JSON.stringify(clean));
+  return { ok: true, ...clean };
+}
+
+// Projected revenue = Σ(price × stock) over active products. COGS uses each
+// product's own `cost` when set, otherwise price × default_cost_ratio.
+function getFinancials() {
+  const cfg = getFinancialsConfig();
+  const products = queryRecords('Product', {});
+  let projectedRevenue = 0;
+  let estimatedCogs = 0;
+  let unitsInStock = 0;
+  let activeCount = 0;
+  for (const p of products) {
+    if (p.status && p.status !== 'active') continue;
+    const price = Number(p.price) || 0;
+    const stock = Number(p.stock_quantity) || 0;
+    const unitCost = Number(p.cost ?? p.cost_price);
+    const cost = Number.isFinite(unitCost) && unitCost > 0 ? unitCost : price * cfg.default_cost_ratio;
+    projectedRevenue += price * stock;
+    estimatedCogs += cost * stock;
+    unitsInStock += stock;
+    activeCount += 1;
+  }
+  const overheadsTotal = cfg.overhead_rows.reduce(
+    (sum, r) => sum + (Number(r.qty) || 0) * (Number(r.unit_price) || 0), 0
+  );
+  const projectedGrossProfit = projectedRevenue - estimatedCogs - overheadsTotal;
+  const projectedMargin = projectedRevenue > 0 ? projectedGrossProfit / projectedRevenue : 0;
+  return {
+    currency_label: cfg.currency_label,
+    default_cost_ratio: cfg.default_cost_ratio,
+    overhead_rows: cfg.overhead_rows,
+    products_count: activeCount,
+    units_in_stock: unitsInStock,
+    projected_revenue: Math.round(projectedRevenue * 100) / 100,
+    estimated_cogs: Math.round(estimatedCogs * 100) / 100,
+    overheads_total: Math.round(overheadsTotal * 100) / 100,
+    projected_gross_profit: Math.round(projectedGrossProfit * 100) / 100,
+    projected_margin: Math.round(projectedMargin * 1000) / 1000,
+  };
+}
+
+// ─── Customers: aggregate from Orders (admin via central guard) ───────────────
+// Trending has no first-class Customer records, so derive them from Orders
+// keyed by phone (fallback email). Money fields (total_spent, aov) are included
+// only for super_admins so a regular admin's browser never sees revenue totals.
+function aggregateCustomers(user) {
+  const orders = queryRecords('Order', { sort: '-created_date' });
+  const map = new Map();
+  for (const o of orders) {
+    const key = (o.customer_phone || o.customer_email || '').trim().toLowerCase();
+    if (!key) continue;
+    let c = map.get(key);
+    if (!c) {
+      c = {
+        key,
+        name: o.customer_name || '',
+        phone: o.customer_phone || '',
+        email: o.customer_email || '',
+        orders_count: 0,
+        total_spent: 0,
+        last_order_date: o.created_date,
+        last_order_number: o.order_number || '',
+      };
+      map.set(key, c);
+    }
+    c.orders_count += 1;
+    c.total_spent += Number(o.total) || 0;
+    if (!c.name && o.customer_name) c.name = o.customer_name;
+    if (!c.email && o.customer_email) c.email = o.customer_email;
+  }
+  let customers = [...map.values()].sort((a, b) => b.orders_count - a.orders_count);
+  if (!isSuperAdmin(user)) {
+    customers = customers.map(({ total_spent, ...rest }) => rest);
+  } else {
+    customers = customers.map((c) => ({ ...c, aov: c.orders_count ? Math.round((c.total_spent / c.orders_count) * 100) / 100 : 0 }));
+  }
+  return { customers };
+}
+
+function listCustomers(body, user) {
+  return aggregateCustomers(user);
+}
+
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportCustomersCsv(body, user) {
+  const { customers } = aggregateCustomers(user);
+  const includeMoney = isSuperAdmin(user);
+  const headers = ['Name', 'Phone', 'Email', 'Orders', 'Last Order', 'Last Order Date'];
+  if (includeMoney) headers.push('Total Spent', 'AOV');
+  const lines = [headers.join(',')];
+  for (const c of customers) {
+    const row = [c.name, c.phone, c.email, c.orders_count, c.last_order_number, c.last_order_date];
+    if (includeMoney) row.push(c.total_spent, c.aov);
+    lines.push(row.map(csvCell).join(','));
+  }
+  return { filename: `customers-${new Date().toISOString().slice(0, 10)}.csv`, csv: lines.join('\n') };
+}
+
+function exportProductsCsv() {
+  const products = queryRecords('Product', { sort: '-created_date' });
+  const headers = ['Name', 'Name (AR)', 'Category', 'Price', 'Compare At', 'Stock', 'Status'];
+  const lines = [headers.join(',')];
+  for (const p of products) {
+    lines.push([
+      p.name, p.name_ar, p.category, p.price, p.compare_at_price ?? '', p.stock_quantity ?? '', p.status ?? '',
+    ].map(csvCell).join(','));
+  }
+  return { filename: `products-${new Date().toISOString().slice(0, 10)}.csv`, csv: lines.join('\n') };
+}
+
+function exportInventoryCsv(body, user) {
+  const products = queryRecords('Product', { sort: 'stock_quantity' });
+  const includeValue = isSuperAdmin(user);
+  const headers = ['Name', 'Category', 'Stock', 'Status'];
+  if (includeValue) headers.push('Unit Price', 'Stock Value');
+  const lines = [headers.join(',')];
+  for (const p of products) {
+    const row = [p.name, p.category, p.stock_quantity ?? 0, p.status ?? ''];
+    if (includeValue) {
+      const price = Number(p.price) || 0;
+      const stock = Number(p.stock_quantity) || 0;
+      row.push(price, Math.round(price * stock * 100) / 100);
+    }
+    lines.push(row.map(csvCell).join(','));
+  }
+  return { filename: `inventory-${new Date().toISOString().slice(0, 10)}.csv`, csv: lines.join('\n') };
+}
+
+// ─── Category cleanup (admin) ─────────────────────────────────────────────────
+// Remove duplicate categories (same slug) keeping the earliest, and drop
+// categories that have no products and no slug. Returns a summary.
+function cleanupCategories() {
+  const categories = queryRecords('Category', { sort: 'created_date' });
+  const products = queryRecords('Product', {});
+  const usedSlugs = new Set(products.map((p) => p.category).filter(Boolean));
+  const seen = new Set();
+  let removedDupes = 0;
+  let removedEmpty = 0;
+  for (const c of categories) {
+    if (c.slug && seen.has(c.slug)) {
+      deleteRecord('Category', c.id); removedDupes += 1; continue;
+    }
+    if (c.slug) seen.add(c.slug);
+    if (!c.slug && !c.name) { deleteRecord('Category', c.id); removedEmpty += 1; }
+  }
+  return { ok: true, removed_duplicates: removedDupes, removed_empty: removedEmpty, used_slugs: [...usedSlugs] };
+}
+
 const REGISTRY = {
   commitStock,
   sendOrderConfirmation,
@@ -359,6 +556,14 @@ const REGISTRY = {
   listUsers,
   setUserRole,
   listAuditLog,
+  getFinancials,
+  getFinancialsConfig,
+  saveFinancialsConfig,
+  listCustomers,
+  exportCustomersCsv,
+  exportProductsCsv,
+  exportInventoryCsv,
+  cleanupCategories,
 };
 
 // ─── Centralized authorization ───────────────────────────────────────────────
@@ -378,6 +583,14 @@ const GUARDS = {
   listAuditLog: 'super_admin',
   listUsers: 'super_admin',
   setUserRole: 'super_admin',
+  getFinancials: 'super_admin',
+  getFinancialsConfig: 'super_admin',
+  saveFinancialsConfig: 'super_admin',
+  listCustomers: 'admin',
+  exportCustomersCsv: 'admin',
+  exportProductsCsv: 'admin',
+  exportInventoryCsv: 'admin',
+  cleanupCategories: 'admin',
 };
 
 // Returns a 401/403 error object when the user fails the level, else null.

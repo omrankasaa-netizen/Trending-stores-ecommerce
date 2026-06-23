@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, ShoppingBag, Package, BarChart2, FolderOpen, Home, Settings, Mail, Menu, X, ExternalLink, ChevronRight, Percent, Shield, ScrollText
+  LayoutDashboard, ShoppingBag, Package, BarChart2, FolderOpen, Home, Settings, Mail, Menu, X, ExternalLink, ChevronRight, Percent, Shield, ScrollText, Users, DollarSign
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/AuthContext";
 const NAV = [
   { label: "لوحة التحكم", labelEn: "Dashboard",    path: "/admin",            icon: LayoutDashboard },
   { label: "الطلبات",     labelEn: "Orders",         path: "/admin/orders",     icon: ShoppingBag },
+  { label: "العملاء",     labelEn: "Customers",       path: "/admin/customers",  icon: Users },
   { label: "المنتجات",    labelEn: "Products",        path: "/admin/products",   icon: Package },
   { label: "المخزون",     labelEn: "Inventory",       path: "/admin/inventory",  icon: BarChart2 },
   { label: "الفئات",      labelEn: "Categories",      path: "/admin/categories", icon: FolderOpen },
@@ -23,8 +24,9 @@ const NAV = [
 
 // Owner-only entries appended for super_admin users.
 const SUPER_ADMIN_NAV = [
-  { label: "الفريق والصلاحيات", labelEn: "Team & Roles", path: "/admin/team",  icon: Shield },
-  { label: "سجل التدقيق",       labelEn: "Audit Log",    path: "/admin/audit", icon: ScrollText },
+  { label: "المالية",          labelEn: "Finances",     path: "/admin/finances", icon: DollarSign },
+  { label: "الفريق والصلاحيات", labelEn: "Team & Roles", path: "/admin/team",     icon: Shield },
+  { label: "سجل التدقيق",       labelEn: "Audit Log",    path: "/admin/audit",    icon: ScrollText },
 ];
 
 export default function AdminLayout() {

@@ -30,6 +30,8 @@ import AdminSettings from './pages/admin/Settings';
 import AdminEmailLog from './pages/admin/EmailLog';
 import AdminTeam from './pages/admin/Team';
 import AdminAuditLog from './pages/admin/AuditLog';
+import AdminCustomers from './pages/admin/Customers';
+import AdminFinances from './pages/admin/Finances';
 import AdminLayout from './components/admin/AdminLayout';
 import Layout from './components/Layout';
 
@@ -87,14 +89,16 @@ const AuthenticatedApp = () => {
           <Route path="content" element={<AdminContent />} />
           <Route path="settings" element={<AdminSettings />} />
           <Route path="emails" element={<AdminEmailLog />} />
+          <Route path="customers" element={<AdminCustomers />} />
         </Route>
       </Route>
 
-      {/* Super-admin-only admin routes (Team & Roles, Audit Log) */}
+      {/* Super-admin-only admin routes (Team & Roles, Audit Log, Finances) */}
       <Route element={<ProtectedRoute requireAdmin requireSuperAdmin unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route path="/admin" element={<AdminLayout />}>
           <Route path="team" element={<AdminTeam />} />
           <Route path="audit" element={<AdminAuditLog />} />
+          <Route path="finances" element={<AdminFinances />} />
         </Route>
       </Route>
 
