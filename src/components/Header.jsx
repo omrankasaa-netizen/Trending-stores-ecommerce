@@ -2,16 +2,25 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Search, ShoppingCart, Menu, MessageCircle, Globe } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Search, ShoppingCart, Menu, MessageCircle, Globe, User, ShoppingBag, MapPin, LogOut, LayoutDashboard, LogIn, UserPlus } from "lucide-react";
 import { useLanguage } from "@/components/useLanguage";
 import { useCart } from "@/components/useCart";
 import { useSiteSettings } from "@/components/useSiteSettings";
+import { useAuth } from "@/lib/AuthContext";
 import CartDrawer from "@/components/CartDrawer";
+
+const ADMIN_ROLES = ["admin", "super_admin"];
 
 export default function Header() {
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { cart, cartCount, subtotal, updateQty, removeFromCart } = useCart();
   const { whatsappNumber } = useSiteSettings();
+  const { user, isAuthenticated, logout } = useAuth();
+  const isAdmin = isAuthenticated && ADMIN_ROLES.includes(user?.role);
   const [cartOpen, setCartOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -80,6 +89,71 @@ export default function Header() {
                   <MessageCircle className="w-5 h-5" />
                 </Button>
               </a>
+
+              {/* Account / Login */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="text-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors" aria-label={t("Account", "حسابي")}>
+                    <User className="w-5 h-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align={isRTL ? "start" : "end"} className="w-52">
+                  {isAuthenticated ? (
+                    <>
+                      <DropdownMenuLabel className="truncate">
+                        {user?.full_name || user?.email}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {isAdmin && (
+                        <DropdownMenuItem asChild>
+                          <Link to="/admin" className="cursor-pointer">
+                            <LayoutDashboard className="w-4 h-4 mr-2" />
+                            {t("Admin Panel", "لوحة التحكم")}
+                          </Link>
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem asChild>
+                        <Link to="/account" className="cursor-pointer">
+                          <User className="w-4 h-4 mr-2" />
+                          {t("My Account", "حسابي")}
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/account/orders" className="cursor-pointer">
+                          <ShoppingBag className="w-4 h-4 mr-2" />
+                          {t("My Orders", "طلباتي")}
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/account/addresses" className="cursor-pointer">
+                          <MapPin className="w-4 h-4 mr-2" />
+                          {t("Addresses", "العناوين")}
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => logout()} className="cursor-pointer text-destructive focus:text-destructive">
+                        <LogOut className="w-4 h-4 mr-2" />
+                        {t("Log Out", "تسجيل الخروج")}
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link to="/login" className="cursor-pointer">
+                          <LogIn className="w-4 h-4 mr-2" />
+                          {t("Login", "تسجيل الدخول")}
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/register" className="cursor-pointer">
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          {t("Create Account", "إنشاء حساب")}
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* Cart */}
               <Button

@@ -199,6 +199,15 @@ export default function Footer() {
           <div style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
             © 2025 Trending Store.{" "}
             {t("All rights reserved.", "جميع الحقوق محفوظة.")}
+            {/* Discreet staff entry point to the admin panel. */}
+            <Link
+              to="/admin"
+              aria-label="Admin"
+              title="Admin"
+              className="ml-1 text-primary-foreground/30 hover:text-primary-foreground/70 transition-colors"
+            >
+              ·
+            </Link>
           </div>
           <div className={`flex items-center gap-4 flex-wrap ${isRTL ? "flex-row-reverse" : ""}`}>
             <Link to="/about" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
