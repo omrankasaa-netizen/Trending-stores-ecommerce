@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/useLanguage";
 import { useCart } from "@/components/useCart";
 import { useSiteSettings } from "@/components/useSiteSettings";
+import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { MessageCircle, CheckCircle2, Truck, ShoppingBag, Tag } from "lucide-react";
+import { MessageCircle, CheckCircle2, Truck, ShoppingBag, Tag, MapPin } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 
 const WHATSAPP_FALLBACK = "96181751841";
@@ -24,10 +26,56 @@ export default function Checkout() {
   const { t, isRTL } = useLanguage();
   const { cart, subtotal, clearCart } = useCart();
   const { whatsappNumber, deliveryFee: settingsDelivery } = useSiteSettings();
+  const { user, isAuthenticated } = useAuth();
   const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", notes: "" });
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [orderNum, setOrderNum] = useState("");
+  const [selectedAddrId, setSelectedAddrId] = useState("");
+  const [saveAddress, setSaveAddress] = useState(true);
+
+  // Logged-in shoppers: prefill name/email from their account once.
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      setForm((f) => ({
+        ...f,
+        name: f.name || user.full_name || "",
+        email: f.email || user.email || "",
+        phone: f.phone || user.phone || "",
+      }));
+    }
+  }, [isAuthenticated, user]);
+
+  // Saved shipping addresses for fast checkout (ownership-gated server function).
+  const { data: addrData } = useQuery({
+    queryKey: ["my-addresses", "checkout"],
+    queryFn: () => base44.functions.listMyAddresses(),
+    enabled: isAuthenticated,
+  });
+  const savedAddresses = addrData?.addresses || [];
+
+  // Auto-apply the default saved address the first time addresses load.
+  useEffect(() => {
+    if (!selectedAddrId && savedAddresses.length > 0) {
+      const def = savedAddresses.find((a) => a.is_default) || savedAddresses[0];
+      if (def) applyAddress(def);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedAddresses]);
+
+  const applyAddress = (addr) => {
+    if (!addr) return;
+    setSelectedAddrId(addr.id);
+    setSaveAddress(false);
+    setForm((f) => ({
+      ...f,
+      name: addr.full_name || f.name,
+      phone: addr.phone || f.phone,
+      city: addr.city || f.city,
+      address: addr.address || f.address,
+      notes: addr.notes || f.notes,
+    }));
+  };
 
   const [couponCode, setCouponCode] = useState("");
   const [coupon, setCoupon] = useState(null);
@@ -83,14 +131,19 @@ export default function Checkout() {
     e.preventDefault();
     setLoading(true);
     const oNum = genOrderNum();
+    // Logged-in shoppers: stamp the order with their account email + id so it
+    // shows up in their order history (getMyOrders matches on these). Guests are
+    // unaffected — the guest path stays exactly as before.
+    const orderEmail = form.email || (isAuthenticated ? user?.email : "") || undefined;
     const order = await base44.entities.Order.create({
       order_number: oNum,
       customer_name: form.name,
       customer_phone: form.phone,
-      customer_email: form.email || undefined,
+      customer_email: orderEmail,
       customer_address: form.address,
       customer_city: form.city,
       customer_notes: form.notes,
+      customer_id: isAuthenticated ? user?.id : undefined,
       items: cart,
       subtotal,
       discount,
@@ -107,8 +160,16 @@ export default function Checkout() {
       await Promise.allSettled([
         base44.functions.commitStock({ order_id: orderId }),
         base44.functions.sendOrderNotification({ order_id: orderId }),
-        form.email ? base44.functions.sendOrderConfirmation({ order_id: orderId }) : Promise.resolve(),
+        orderEmail ? base44.functions.sendOrderConfirmation({ order_id: orderId }) : Promise.resolve(),
         coupon ? base44.entities.Coupon.update(coupon.id, { usage_count: Number(coupon.usage_count || 0) + 1 }) : Promise.resolve(),
+        // Offer to remember this address for next time (logged-in shoppers only).
+        (isAuthenticated && saveAddress && form.address && form.city)
+          ? base44.functions.saveMyAddress({
+              full_name: form.name, phone: form.phone, city: form.city,
+              address: form.address, notes: form.notes,
+              is_default: savedAddresses.length === 0,
+            })
+          : Promise.resolve(),
       ]);
     } catch { /* automation failures must not break checkout */ }
 
@@ -170,6 +231,39 @@ export default function Checkout() {
               <h2 className="font-black text-lg" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                 {t("Delivery Details", "تفاصيل التوصيل")}
               </h2>
+
+              {/* Fast checkout: pick a saved address (logged-in shoppers) */}
+              {isAuthenticated && savedAddresses.length > 0 && (
+                <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <MapPin className="w-4 h-4 text-primary" />
+                    <p className="font-bold text-sm" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                      {t("Use a saved address", "استخدم عنواناً محفوظاً")}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {savedAddresses.map((addr) => (
+                      <button
+                        key={addr.id}
+                        type="button"
+                        onClick={() => applyAddress(addr)}
+                        className={`text-left rounded-xl border p-3 transition-colors ${
+                          selectedAddrId === addr.id ? "border-primary bg-primary/10" : "border-border bg-white hover:border-primary/40"
+                        }`}
+                        style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-sm">{addr.full_name}</span>
+                          {addr.label && <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{addr.label}</span>}
+                          {addr.is_default && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{t("Default", "افتراضي")}</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{[addr.city, addr.address].filter(Boolean).join(", ")}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Full Name *", "الاسم الكامل *")}</Label>
@@ -207,6 +301,15 @@ export default function Checkout() {
                 <p className="text-sm text-muted-foreground" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Pay when you receive your order — available across all Lebanon", "ادفع عند استلام طلبك — متاح في جميع أنحاء لبنان")}</p>
               </div>
             </div>
+
+            {isAuthenticated && (
+              <label className="flex items-center gap-2 cursor-pointer px-1" style={{ direction: isRTL ? "rtl" : "ltr" }}>
+                <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} className="rounded" />
+                <span className="text-sm text-muted-foreground" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                  {t("Save this address to my account", "حفظ هذا العنوان في حسابي")}
+                </span>
+              </label>
+            )}
 
             <Button type="submit" disabled={loading} className="w-full h-14 text-lg font-black rounded-2xl bg-primary hover:bg-primary/90" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
               {loading ? t("Placing Order...", "جاري تسجيل الطلب...") : t("Place Order", "تسجيل الطلب")}

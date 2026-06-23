@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -18,6 +18,10 @@ import Contact from './pages/Contact';
 import Search from './pages/Search';
 import CmsPage from './pages/CmsPage';
 import Faq from './pages/Faq';
+import AccountLayout from './pages/account/AccountLayout';
+import ProfilePage from './pages/account/ProfilePage';
+import OrderHistoryPage from './pages/account/OrderHistoryPage';
+import AddressesPage from './pages/account/AddressesPage';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducts from './pages/admin/Products';
 import AdminOrders from './pages/admin/Orders';
@@ -74,10 +78,17 @@ const AuthenticatedApp = () => {
         <Route path="/returns" element={<CmsPage sectionKey="legal_returns" fallbackTitle="Returns & Exchanges" fallbackTitleAr="الإرجاع والاستبدال" />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+
+        {/* Customer account area (self-guards via AuthContext) */}
+        <Route path="/account" element={<AccountLayout />}>
+          <Route index element={<ProfilePage />} />
+          <Route path="orders" element={<OrderHistoryPage />} />
+          <Route path="addresses" element={<AddressesPage />} />
+        </Route>
       </Route>
 
       {/* Admin Routes (gated: admin role only) */}
-      <Route element={<ProtectedRoute requireAdmin unauthenticatedElement={<Navigate to="/login" replace />} />}>
+      <Route element={<ProtectedRoute requireAdmin redirectTo="/login" />}>
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="orders" element={<AdminOrders />} />
@@ -94,7 +105,7 @@ const AuthenticatedApp = () => {
       </Route>
 
       {/* Super-admin-only admin routes (Team & Roles, Audit Log, Finances) */}
-      <Route element={<ProtectedRoute requireAdmin requireSuperAdmin unauthenticatedElement={<Navigate to="/login" replace />} />}>
+      <Route element={<ProtectedRoute requireAdmin requireSuperAdmin redirectTo="/login" />}>
         <Route path="/admin" element={<AdminLayout />}>
           <Route path="team" element={<AdminTeam />} />
           <Route path="audit" element={<AdminAuditLog />} />

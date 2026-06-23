@@ -55,6 +55,10 @@ export const ENTITIES = [
   // Added for the MiniYo improvements port: customers, audit trail, CMS pages,
   // and FAQs. Customers are derived from Orders but can also be stored/edited.
   'Customer', 'AuditLog', 'CmsSection', 'Faq',
+  // Saved shipping addresses for logged-in customers (fast checkout). Reads and
+  // writes go exclusively through the ownership-gated account functions; the
+  // generic CRUD surface keeps it admin-only (see READ_PROTECTED / PUBLIC_WRITES).
+  'CustomerAddress',
 ];
 
 function tableFor(entity) {

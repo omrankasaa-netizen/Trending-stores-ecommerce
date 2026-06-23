@@ -547,8 +547,93 @@ function cleanupCategories() {
   return { ok: true, removed_duplicates: removedDupes, removed_empty: removedEmpty, used_slugs: [...usedSlugs] };
 }
 
+// ─── Customer self-service account (ownership-gated, level 'auth') ─────────────
+// These power the storefront /account area. Every function derives ownership
+// from the AUTHENTICATED `user` — never from a client-supplied id — so a
+// customer can only ever read or mutate their own data. The generic Order /
+// CustomerAddress entity reads stay admin-only (READ_PROTECTED); the storefront
+// reaches a customer's own records solely through these functions.
+
+// A customer's own orders, matched by the email on their account and by any
+// order linked via customer_id (set at checkout). Buyers see full totals for
+// their OWN orders — money redaction only applies to the generic admin read path.
+function getMyOrders(body, user) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  const uid = user?.id;
+  const all = queryRecords('Order', { sort: '-created_date' });
+  const mine = all.filter((o) => {
+    const oEmail = String(o.customer_email || '').trim().toLowerCase();
+    return (email && oEmail === email) || (uid && o.customer_id === uid);
+  });
+  return { orders: mine };
+}
+
+// Saved shipping addresses owned by the current user.
+function listMyAddresses(body, user) {
+  const addresses = queryRecords('CustomerAddress', {
+    query: { user_id: user.id }, sort: '-is_default',
+  });
+  return { addresses };
+}
+
+// Whitelist of address fields a customer may set — never trust client-supplied
+// ownership keys (user_id) or timestamps.
+const ADDRESS_FIELDS = ['label', 'full_name', 'phone', 'city', 'address', 'notes', 'is_default'];
+
+function cleanAddress(body) {
+  const out = {};
+  for (const k of ADDRESS_FIELDS) {
+    if (body[k] !== undefined) out[k] = k === 'is_default' ? !!body[k] : String(body[k] ?? '');
+  }
+  return out;
+}
+
+// When an address is marked default, clear the flag on the user's other addresses
+// so exactly one stays default.
+function clearOtherDefaults(userId, keepId) {
+  const existing = queryRecords('CustomerAddress', { query: { user_id: userId } });
+  for (const a of existing) {
+    if (a.id !== keepId && a.is_default) updateRecord('CustomerAddress', a.id, { is_default: false });
+  }
+}
+
+// Create or update one of the current user's saved addresses. Updates verify the
+// target belongs to the caller before mutating.
+function saveMyAddress(body, user) {
+  const data = cleanAddress(body || {});
+  const id = body?.id;
+  if (id) {
+    const existing = getRecord('CustomerAddress', id);
+    if (!existing || existing.user_id !== user.id) {
+      return { _status: 404, error: 'Address not found' };
+    }
+    const updated = updateRecord('CustomerAddress', id, data);
+    if (updated.is_default) clearOtherDefaults(user.id, id);
+    return { ok: true, address: updated };
+  }
+  const created = createRecord('CustomerAddress', { ...data, user_id: user.id });
+  if (created.is_default) clearOtherDefaults(user.id, created.id);
+  return { ok: true, address: created };
+}
+
+// Delete one of the current user's saved addresses (ownership-checked).
+function deleteMyAddress(body, user) {
+  const id = body?.id;
+  if (!id) return { _status: 400, error: 'id required' };
+  const existing = getRecord('CustomerAddress', id);
+  if (!existing || existing.user_id !== user.id) {
+    return { _status: 404, error: 'Address not found' };
+  }
+  deleteRecord('CustomerAddress', id);
+  return { ok: true, id };
+}
+
 const REGISTRY = {
   commitStock,
+  getMyOrders,
+  listMyAddresses,
+  saveMyAddress,
+  deleteMyAddress,
   sendOrderConfirmation,
   sendOrderNotification,
   sendOrderStatusUpdate,
@@ -576,6 +661,10 @@ const REGISTRY = {
 // Unlisted functions default to 'admin' (fail-safe, never 'public').
 const GUARDS = {
   commitStock: 'public',
+  getMyOrders: 'auth',
+  listMyAddresses: 'auth',
+  saveMyAddress: 'auth',
+  deleteMyAddress: 'auth',
   sendOrderConfirmation: 'public',
   sendOrderNotification: 'public',
   sendOrderStatusUpdate: 'public',

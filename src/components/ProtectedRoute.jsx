@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -13,8 +13,12 @@ const DefaultFallback = () => (
 
 // Renders nested routes only for authenticated users. When `requireAdmin` is set,
 // the user must additionally carry an admin role, otherwise they are sent home.
-export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthenticatedElement, requireAdmin = false, requireSuperAdmin = false }) {
+export default function ProtectedRoute({ fallback = <DefaultFallback />, redirectTo = '/login', requireAdmin = false, requireSuperAdmin = false }) {
   const { user, isAuthenticated, isLoadingAuth, authChecked, authError, checkUserAuth } = useAuth();
+  const location = useLocation();
+
+  // Remember where the user was headed so login can send them back there.
+  const loginRedirect = <Navigate to={redirectTo} state={{ from: location }} replace />;
 
   useEffect(() => {
     if (!authChecked && !isLoadingAuth) {
@@ -30,11 +34,11 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     }
-    return unauthenticatedElement;
+    return loginRedirect;
   }
 
   if (!isAuthenticated) {
-    return unauthenticatedElement;
+    return loginRedirect;
   }
 
   if (requireSuperAdmin && user?.role !== 'super_admin') {

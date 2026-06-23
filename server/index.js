@@ -315,7 +315,7 @@ function authorizeWrite(op) {
 // and the confirmation/receipt is rendered client-side from the submitted cart —
 // there is no guest order read-back — while customers and logs are admin-only
 // screens. So we require an admin-tier session to list or read any of them.
-const READ_PROTECTED = new Set(['Order', 'Customer', 'EmailLog', 'AuditLog', 'User']);
+const READ_PROTECTED = new Set(['Order', 'Customer', 'EmailLog', 'AuditLog', 'User', 'CustomerAddress']);
 
 function authorizeRead(req, res, next) {
   if (!READ_PROTECTED.has(req.params.entity)) return next();
