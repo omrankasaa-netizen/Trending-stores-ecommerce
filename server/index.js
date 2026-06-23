@@ -305,6 +305,27 @@ function authorizeWrite(op) {
   };
 }
 
+// Read authorization for the generic entity read surface.
+//
+// Most reads are public (the storefront is a public catalog: Product, Category,
+// Banner, SiteSettings, Testimonial, Coupon, Discount, CmsSection, Faq). But a
+// handful of entities carry customer PII (name/phone/address/email) or internal
+// business/audit data and must NEVER be readable anonymously. The storefront
+// never reads these unauthenticated: orders are placed via POST (guest checkout)
+// and the confirmation/receipt is rendered client-side from the submitted cart —
+// there is no guest order read-back — while customers and logs are admin-only
+// screens. So we require an admin-tier session to list or read any of them.
+const READ_PROTECTED = new Set(['Order', 'Customer', 'EmailLog', 'AuditLog', 'User']);
+
+function authorizeRead(req, res, next) {
+  if (!READ_PROTECTED.has(req.params.entity)) return next();
+  const user = getUserFromRequest(req);
+  if (isAdmin(user)) return next();
+  return res.status(user ? 403 : 401).json({
+    error: user ? 'Forbidden: admin access required' : 'Authentication required',
+  });
+}
+
 // Never expose User credential-bearing fields through generic CRUD.
 function sanitize(entity, record) {
   if (entity === 'User' && record) {
@@ -343,7 +364,7 @@ function redactMoney(entity, record, user) {
   return out;
 }
 
-app.get('/api/entities/:entity', ensureEntity, (req, res) => {
+app.get('/api/entities/:entity', ensureEntity, authorizeRead, (req, res) => {
   try {
     const user = getUserFromRequest(req);
     const { query, sort, limit } = parseListParams(req);
@@ -353,7 +374,7 @@ app.get('/api/entities/:entity', ensureEntity, (req, res) => {
   } catch (e) { handleError(res, e); }
 });
 
-app.get('/api/entities/:entity/:id', ensureEntity, (req, res) => {
+app.get('/api/entities/:entity/:id', ensureEntity, authorizeRead, (req, res) => {
   try {
     const user = getUserFromRequest(req);
     const record = getRecord(req.params.entity, req.params.id);
