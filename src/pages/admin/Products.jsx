@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Edit2, Trash2, Search, Upload, Download, Printer } from "lucide-react";
+import { Plus, Edit2, Trash2, Search, Upload, Download, Printer, Copy } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { exportViaFunction, printTable } from "@/lib/exportCsv";
 import { useToast } from "@/components/ui/use-toast";
@@ -81,6 +81,22 @@ export default function AdminProducts() {
     // existing products open with their photo already in the gallery editor.
     const images = getProductImages(p);
     setForm({ ...EMPTY, ...p, images });
+    setOpen(true);
+  };
+  // Duplicate a product: open the editor pre-filled with a deep copy as a NEW
+  // product (editing stays null so save() creates a fresh row). We strip the
+  // id/timestamps, suffix the name so it's easy to spot, and re-hydrate images.
+  const handleClone = (p) => {
+    const { id, created_date, updated_date, ...rest } = p;
+    const images = getProductImages(p);
+    setEditing(null);
+    setForm({
+      ...EMPTY,
+      ...rest,
+      name: p.name ? `${p.name} (نسخة)` : "",
+      name_ar: p.name_ar ? `${p.name_ar} (نسخة)` : "",
+      images,
+    });
     setOpen(true);
   };
 
@@ -247,8 +263,9 @@ export default function AdminProducts() {
                       {p.compare_at_price && <span className="text-xs text-muted-foreground line-through mr-1">{fmt(p.compare_at_price)}</span>}
                     </div>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}><Edit2 className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteProduct(p.id)}><Trash2 className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)} title="تعديل"><Edit2 className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleClone(p)} title="نسخ المنتج"><Copy className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteProduct(p.id)} title="حذف"><Trash2 className="w-4 h-4" /></Button>
                     </div>
                   </div>
                 </CardContent>
