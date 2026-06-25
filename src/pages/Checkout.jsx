@@ -267,24 +267,24 @@ export default function Checkout() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Full Name *", "الاسم الكامل *")}</Label>
-                  <Input value={form.name} onChange={e => updateForm("name", e.target.value)} required className={`mt-1.5 ${inputClass}`} style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }} />
+                  <Input value={form.name} onChange={e => updateForm("name", e.target.value)} required autoComplete="name" className={`mt-1.5 ${inputClass}`} style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }} />
                 </div>
                 <div>
                   <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Phone Number *", "رقم الهاتف *")}</Label>
-                  <Input value={form.phone} onChange={e => updateForm("phone", e.target.value)} required type="tel" className={`mt-1.5 ${inputClass}`} />
+                  <Input value={form.phone} onChange={e => updateForm("phone", e.target.value)} required type="tel" inputMode="tel" autoComplete="tel" className={`mt-1.5 ${inputClass}`} />
                 </div>
               </div>
               <div>
                 <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Email (optional — for order updates)", "البريد الإلكتروني (اختياري — لتحديثات الطلب)")}</Label>
-                <Input value={form.email} onChange={e => updateForm("email", e.target.value)} type="email" className={`mt-1.5 ${inputClass}`} style={{ direction: "ltr" }} />
+                <Input value={form.email} onChange={e => updateForm("email", e.target.value)} type="email" inputMode="email" autoComplete="email" className={`mt-1.5 ${inputClass}`} style={{ direction: "ltr" }} />
               </div>
               <div>
                 <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("City *", "المدينة *")}</Label>
-                <Input value={form.city} onChange={e => updateForm("city", e.target.value)} required className={`mt-1.5 ${inputClass}`} placeholder={t("e.g. Tripoli, Beirut, Sidon...", "مثال: طرابلس، بيروت، صيدا...")} style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }} />
+                <Input value={form.city} onChange={e => updateForm("city", e.target.value)} required autoComplete="address-level2" className={`mt-1.5 ${inputClass}`} placeholder={t("e.g. Tripoli, Beirut, Sidon...", "مثال: طرابلس، بيروت، صيدا...")} style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }} />
               </div>
               <div>
                 <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Full Address *", "العنوان الكامل *")}</Label>
-                <Input value={form.address} onChange={e => updateForm("address", e.target.value)} required className={`mt-1.5 ${inputClass}`} style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }} />
+                <Input value={form.address} onChange={e => updateForm("address", e.target.value)} required autoComplete="street-address" className={`mt-1.5 ${inputClass}`} style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }} />
               </div>
               <div>
                 <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Notes (optional)", "ملاحظات (اختياري)")}</Label>
