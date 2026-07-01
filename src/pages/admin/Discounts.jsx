@@ -23,6 +23,12 @@ export default function AdminDiscounts() {
   // Coupons are stored as a real backend entity so they can be validated at checkout.
   const [coupons, setCoupons] = useState([]);
   const [couponForm, setCouponForm] = useState({ code: "", type: "percent", value: "", min_order: "", usage_limit: "", expiry: "", active: true });
+  const [savingCoupon, setSavingCoupon] = useState(false);
+
+  // Resolve a record id robustly ('id' or Mongo-style '_id') so requests never hit /entities/<Name>/undefined.
+  const rid = (o) => o?.id || o?._id;
+  // Extract a human-readable error message from a failed request.
+  const errMsg = (e) => e?.data?.error || e?.message || "حدث خطأ غير متوقع";
 
   const loadCoupons = () => base44.entities.Coupon.list("-created_date", 200).then(setCoupons).catch(() => setCoupons([]));
 
@@ -34,62 +40,87 @@ export default function AdminDiscounts() {
   const fmt = formatPrice;
 
   const applyBulkDiscount = async () => {
-    if (!discountValue || selectedProducts.length === 0) {
-      toast({ title: "اختر منتجات وأدخل قيمة الخصم", variant: "destructive" }); return;
+    if (!discountValue || Number(discountValue) <= 0 || selectedProducts.length === 0) {
+      toast({ title: "اختر منتجات وأدخل قيمة خصم أكبر من صفر", variant: "destructive" }); return;
     }
     setApplying(true);
-    for (const id of selectedProducts) {
-      const p = products.find(x => x.id === id);
-      if (!p) continue;
-      const currentPrice = Number(p.price);
-      if (discountType === "percent") {
-        const newPrice = Math.round(currentPrice * (1 - Number(discountValue) / 100));
-        await base44.entities.Product.update(id, { price: newPrice, compare_at_price: currentPrice });
-      } else {
-        const newPrice = Math.max(0, currentPrice - Number(discountValue));
+    try {
+      for (const id of selectedProducts) {
+        const p = products.find(x => rid(x) === id);
+        if (!p) continue;
+        const currentPrice = Number(p.price);
+        const newPrice = discountType === "percent"
+          ? Math.round(currentPrice * (1 - Number(discountValue) / 100))
+          : Math.max(0, currentPrice - Number(discountValue));
         await base44.entities.Product.update(id, { price: newPrice, compare_at_price: currentPrice });
       }
+      const updated = await base44.entities.Product.list("-created_date", 200);
+      setProducts(updated);
+      const count = selectedProducts.length;
+      setSelectedProducts([]);
+      setDiscountValue("");
+      toast({ title: `✅ تم تطبيق الخصم على ${count} منتج` });
+    } catch (e) {
+      toast({ title: "تعذّر تطبيق الخصم", description: errMsg(e), variant: "destructive" });
+    } finally {
+      setApplying(false);
     }
-    const updated = await base44.entities.Product.list("-created_date", 200);
-    setProducts(updated);
-    setSelectedProducts([]);
-    setDiscountValue("");
-    toast({ title: `✅ تم تطبيق الخصم على ${selectedProducts.length} منتج` });
-    setApplying(false);
   };
 
   const removeDiscount = async (id) => {
-    await base44.entities.Product.update(id, { compare_at_price: null });
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, compare_at_price: null } : p));
-    toast({ title: "تم إزالة الخصم" });
+    try {
+      await base44.entities.Product.update(id, { compare_at_price: null });
+      setProducts(prev => prev.map(p => rid(p) === id ? { ...p, compare_at_price: null } : p));
+      toast({ title: "تم إزالة الخصم" });
+    } catch (e) {
+      toast({ title: "تعذّر إزالة الخصم", description: errMsg(e), variant: "destructive" });
+    }
   };
 
   const addCoupon = async () => {
-    if (!couponForm.code || !couponForm.value) { toast({ title: "أدخل الكود والقيمة", variant: "destructive" }); return; }
-    await base44.entities.Coupon.create({
-      code: couponForm.code.toUpperCase(),
-      type: couponForm.type,
-      value: Number(couponForm.value),
-      min_order: couponForm.min_order ? Number(couponForm.min_order) : 0,
-      usage_limit: couponForm.usage_limit ? Number(couponForm.usage_limit) : 0,
-      usage_count: 0,
-      expiry: couponForm.expiry || null,
-      active: couponForm.active,
-    });
-    await loadCoupons();
-    setCouponForm({ code: "", type: "percent", value: "", min_order: "", usage_limit: "", expiry: "", active: true });
-    toast({ title: "✅ تم إضافة الكوبون" });
+    if (!couponForm.code || !couponForm.value || Number(couponForm.value) <= 0) {
+      toast({ title: "أدخل الكود وقيمة أكبر من صفر", variant: "destructive" }); return;
+    }
+    setSavingCoupon(true);
+    try {
+      await base44.entities.Coupon.create({
+        code: couponForm.code.toUpperCase(),
+        type: couponForm.type,
+        value: Number(couponForm.value),
+        min_order: couponForm.min_order ? Number(couponForm.min_order) : 0,
+        usage_limit: couponForm.usage_limit ? Number(couponForm.usage_limit) : 0,
+        usage_count: 0,
+        expiry: couponForm.expiry || null,
+        active: couponForm.active,
+      });
+      await loadCoupons();
+      setCouponForm({ code: "", type: "percent", value: "", min_order: "", usage_limit: "", expiry: "", active: true });
+      toast({ title: "✅ تم إضافة الكوبون" });
+    } catch (e) {
+      toast({ title: "تعذّر إضافة الكوبون", description: errMsg(e), variant: "destructive" });
+    } finally {
+      setSavingCoupon(false);
+    }
   };
 
   const deleteCoupon = async (id) => {
     if (!confirm("هل تريد حذف هذا الكوبون؟")) return;
-    await base44.entities.Coupon.delete(id);
-    await loadCoupons();
+    try {
+      await base44.entities.Coupon.delete(id);
+      await loadCoupons();
+      toast({ title: "تم حذف الكوبون" });
+    } catch (e) {
+      toast({ title: "تعذّر حذف الكوبون", description: errMsg(e), variant: "destructive" });
+    }
   };
 
   const toggleCoupon = async (c) => {
-    await base44.entities.Coupon.update(c.id, { active: !c.active });
-    await loadCoupons();
+    try {
+      await base44.entities.Coupon.update(rid(c), { active: !c.active });
+      await loadCoupons();
+    } catch (e) {
+      toast({ title: "تعذّر تحديث الكوبون", description: errMsg(e), variant: "destructive" });
+    }
   };
 
   const discountedProducts = products.filter(p => p.compare_at_price && p.compare_at_price > p.price);
@@ -146,13 +177,13 @@ export default function AdminDiscounts() {
               <Card className="border-0 shadow-sm">
                 <CardHeader className="flex flex-row items-center justify-between pb-3">
                   <CardTitle className="text-base font-black">اختر المنتجات</CardTitle>
-                  <button className="text-xs text-primary font-bold" onClick={() => setSelectedProducts(products.map(p => p.id))}>اختر الكل</button>
+                  <button className="text-xs text-primary font-bold" onClick={() => setSelectedProducts(products.map(p => rid(p)))}>اختر الكل</button>
                 </CardHeader>
                 <CardContent className="p-0 max-h-96 overflow-y-auto">
                   {products.map(p => (
-                    <label key={p.id} className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 ${selectedProducts.includes(p.id) ? "bg-primary/5" : ""}`}>
-                      <input type="checkbox" checked={selectedProducts.includes(p.id)}
-                        onChange={e => setSelectedProducts(prev => e.target.checked ? [...prev, p.id] : prev.filter(x => x !== p.id))}
+                    <label key={rid(p)} className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 ${selectedProducts.includes(rid(p)) ? "bg-primary/5" : ""}`}>
+                      <input type="checkbox" checked={selectedProducts.includes(rid(p))}
+                        onChange={e => setSelectedProducts(prev => e.target.checked ? [...prev, rid(p)] : prev.filter(x => x !== rid(p)))}
                         className="rounded" />
                       <img src={p.image_url || "https://placehold.co/40?text=?"} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                       <div className="flex-1 min-w-0">
@@ -180,7 +211,7 @@ export default function AdminDiscounts() {
                   {discountedProducts.map(p => {
                     const pct = Math.round(((p.compare_at_price - p.price) / p.compare_at_price) * 100);
                     return (
-                      <div key={p.id} className="flex items-center gap-3 px-4 py-3">
+                      <div key={rid(p)} className="flex items-center gap-3 px-4 py-3">
                         <img src={p.image_url || "https://placehold.co/40?text=?"} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="font-bold text-sm truncate">{p.name_ar || p.name}</div>
@@ -190,7 +221,7 @@ export default function AdminDiscounts() {
                             <Badge className="bg-red-500 text-white text-xs">-{pct}%</Badge>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => removeDiscount(p.id)} className="text-red-500 border-red-200 hover:bg-red-50 rounded-xl text-xs">
+                        <Button variant="outline" size="sm" onClick={() => removeDiscount(rid(p))} className="text-red-500 border-red-200 hover:bg-red-50 rounded-xl text-xs">
                           إزالة الخصم
                         </Button>
                       </div>
@@ -238,9 +269,9 @@ export default function AdminDiscounts() {
                     <Input className="mt-1" type="date" value={couponForm.expiry} onChange={e => setCouponForm(f => ({...f, expiry: e.target.value}))} />
                   </div>
                 </div>
-                <Button onClick={addCoupon} className="w-full rounded-xl font-black h-11">
+                <Button onClick={addCoupon} disabled={savingCoupon} className="w-full rounded-xl font-black h-11">
                   <Plus className="w-4 h-4 ml-2" />
-                  إضافة الكوبون
+                  {savingCoupon ? "جاري الحفظ..." : "إضافة الكوبون"}
                 </Button>
               </CardContent>
             </Card>
@@ -253,7 +284,7 @@ export default function AdminDiscounts() {
                 ) : (
                   <div className="divide-y divide-gray-50">
                     {coupons.map(c => (
-                      <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+                      <div key={rid(c)} className="flex items-center gap-3 px-4 py-3">
                         <div className="flex-1 min-w-0">
                           <div className="font-black text-primary" style={{ letterSpacing: "0.1em", direction: "ltr" }}>{c.code}</div>
                           <div className="text-xs text-muted-foreground">
@@ -263,7 +294,7 @@ export default function AdminDiscounts() {
                           </div>
                         </div>
                         <Switch checked={!!c.active} onCheckedChange={() => toggleCoupon(c)} />
-                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => deleteCoupon(c.id)}>
+                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => deleteCoupon(rid(c))}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
