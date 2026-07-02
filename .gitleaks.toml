@@ -1,0 +1,32 @@
+# Gitleaks configuration for Trending Store
+# Extends the default gitleaks ruleset and adds project-specific allowlisting
+# for known-safe placeholders and public identifiers.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for known-safe placeholders and public identifiers"
+
+# Files that only contain placeholder / example values.
+paths = [
+  '''\.env\.example$''',
+  '''(^|/)README\.md$''',
+  '''(^|/)SECURITY\.md$''',
+  '''(^|/)PORT_SUMMARY\.md$''',
+]
+
+# Known-safe regexes:
+#  - Dev-only JWT placeholder (env-overridable, never used in production).
+#  - Base44 app id: a PUBLIC client identifier, not a secret.
+#  - Common placeholder tokens used in docs/examples.
+regexes = [
+  '''miniyo-dev-secret-change-me''',
+  '''VITE_BASE44_APP_ID''',
+  '''cbef744a8545c389ef439ea6''',
+  '''your_app_id''',
+  '''your_backend_url''',
+  '''(?i)your[-_]?(api[-_]?key|secret|password|token)''',
+  '''(?i)changeme|change-me|placeholder|example''',
+  '''onboarding@resend\.dev''',
+]

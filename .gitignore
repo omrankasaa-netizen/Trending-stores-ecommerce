@@ -1,6 +1,8 @@
 #env
 .env
 .env.*
+# but keep the committed placeholder template
+!.env.example
 
 # Logs
 /logs
