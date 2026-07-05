@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Image as ImageIcon, X, Crop as CropIcon, Crosshair, Star } from "lucide-react";
 import { getImageFrameStyle, hasCrop } from "@/lib/productImages";
+import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 // 3:4 portrait aspect (width / height) — matches the storefront card box.
 const ASPECT = 3 / 4;
@@ -41,6 +42,7 @@ function SingleImageEditor({ image, onChange }) {
   const [mode, setMode] = useState("focal"); // "focal" | "crop"
   const [crop, setCrop] = useState(null);
   const imgRef = useRef(null);
+  const { t } = useAdminLanguage();
 
   const focal = image.focal || { x: 0.5, y: 0.5 };
 
@@ -100,7 +102,7 @@ function SingleImageEditor({ image, onChange }) {
             className="rounded-xl gap-1.5"
             onClick={() => setMode("focal")}
           >
-            <Crosshair className="w-4 h-4" /> نقطة التركيز
+            <Crosshair className="w-4 h-4" /> {t("Focal Point", "نقطة التركيز")}
           </Button>
           <Button
             type="button" size="sm"
@@ -108,7 +110,7 @@ function SingleImageEditor({ image, onChange }) {
             className="rounded-xl gap-1.5"
             onClick={() => setMode("crop")}
           >
-            <CropIcon className="w-4 h-4" /> قص الصورة (3:4)
+            <CropIcon className="w-4 h-4" /> {t("Crop Image (3:4)", "قص الصورة (3:4)")}
           </Button>
         </div>
 
@@ -141,22 +143,22 @@ function SingleImageEditor({ image, onChange }) {
               />
             </ReactCrop>
             <div className="flex gap-2 mt-3">
-              <Button type="button" size="sm" className="rounded-xl" onClick={applyCrop}>تطبيق القص</Button>
+              <Button type="button" size="sm" className="rounded-xl" onClick={applyCrop}>{t("Apply Crop", "تطبيق القص")}</Button>
               {image.crop && (
-                <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={clearCrop}>إلغاء القص</Button>
+                <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={clearCrop}>{t("Clear Crop", "إلغاء القص")}</Button>
               )}
             </div>
           </div>
         )}
         <p className="text-xs text-muted-foreground mt-2">
           {mode === "focal"
-            ? "اضغط على الصورة لتحديد الجزء الذي يظهر في وسط البطاقة."
-            : "اسحب لتحديد منطقة القص بنسبة 3:4. القص غير متلف — الصورة الأصلية تبقى كما هي."}
+            ? t("Click on the image to set which part appears in the center of the card.", "اضغط على الصورة لتحديد الجزء الذي يظهر في وسط البطاقة.")
+            : t("Drag to select a 3:4 crop area. Cropping is non-destructive — the original image stays intact.", "اسحب لتحديد منطقة القص بنسبة 3:4. القص غير متلف — الصورة الأصلية تبقى كما هي.")}
         </p>
       </div>
 
       <div>
-        <Label className="text-xs font-bold block mb-2">معاينة البطاقة (3:4)</Label>
+        <Label className="text-xs font-bold block mb-2">{t("Card Preview (3:4)", "معاينة البطاقة (3:4)")}</Label>
         <FramedPreview image={image} />
       </div>
     </div>
@@ -167,6 +169,7 @@ export default function ProductImagesEditor({ images, onChange }) {
   const list = (Array.isArray(images) ? images : []).map(normalize);
   const [uploading, setUploading] = useState(false);
   const [editIndex, setEditIndex] = useState(null);
+  const { t, isRTL } = useAdminLanguage();
 
   const update = (next) => onChange(next);
 
@@ -205,22 +208,22 @@ export default function ProductImagesEditor({ images, onChange }) {
 
   return (
     <div>
-      <Label className="font-black text-base block mb-2">صور المنتج (تظهر في معرض البطاقة)</Label>
+      <Label className="font-black text-base block mb-2">{t("Product Images (shown in the card gallery)", "صور المنتج (تظهر في معرض البطاقة)")}</Label>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {list.map((img, i) => (
           <div key={i} className="relative group">
             <FramedPreview image={img} />
             {i === 0 && (
-              <span className="absolute top-1.5 right-1.5 bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                <Star className="w-2.5 h-2.5" fill="white" /> الرئيسية
+              <span className={`absolute top-1.5 bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 ${isRTL ? "right-1.5" : "left-1.5"}`}>
+                <Star className="w-2.5 h-2.5" fill="white" /> {t("Main", "الرئيسية")}
               </span>
             )}
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 p-1.5 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
                 className="w-6 h-6 rounded-md bg-white/90 text-xs disabled:opacity-40">‹</button>
               <button type="button" onClick={() => setEditIndex(i)}
-                className="px-2 h-6 rounded-md bg-white/90 text-[11px] font-bold">تعديل</button>
+                className="px-2 h-6 rounded-md bg-white/90 text-[11px] font-bold">{t("Edit", "تعديل")}</button>
               <button type="button" onClick={() => move(i, 1)} disabled={i === list.length - 1}
                 className="w-6 h-6 rounded-md bg-white/90 text-xs disabled:opacity-40">›</button>
             </div>
@@ -233,7 +236,7 @@ export default function ProductImagesEditor({ images, onChange }) {
 
         <label className="cursor-pointer aspect-[3/4] border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-center hover:border-primary hover:bg-primary/5 transition-colors">
           <ImageIcon className="w-7 h-7 text-muted-foreground mb-1.5" />
-          <span className="text-xs font-bold px-1">{uploading ? "جاري الرفع..." : "إضافة صور"}</span>
+          <span className="text-xs font-bold px-1">{uploading ? t("Uploading...", "جاري الرفع...") : t("Add Images", "إضافة صور")}</span>
           <span className="text-[10px] text-muted-foreground">JPG, PNG</span>
           <input type="file" accept="image/*" multiple className="hidden" onChange={uploadImages} disabled={uploading} />
         </label>
@@ -242,8 +245,8 @@ export default function ProductImagesEditor({ images, onChange }) {
       {editIndex != null && list[editIndex] && (
         <div className="mt-4 border rounded-2xl p-4 bg-gray-50/60">
           <div className="flex items-center justify-between mb-3">
-            <span className="font-bold text-sm">تأطير الصورة {editIndex + 1}</span>
-            <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={() => setEditIndex(null)}>تم</Button>
+            <span className="font-bold text-sm">{t(`Framing image ${editIndex + 1}`, `تأطير الصورة ${editIndex + 1}`)}</span>
+            <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={() => setEditIndex(null)}>{t("Done", "تم")}</Button>
           </div>
           <SingleImageEditor image={list[editIndex]} onChange={(img) => setImageMeta(editIndex, img)} />
         </div>

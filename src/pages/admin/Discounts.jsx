@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { Plus, Trash2 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 export default function AdminDiscounts() {
   const [products, setProducts] = useState([]);
@@ -19,6 +20,7 @@ export default function AdminDiscounts() {
   const [discountValue, setDiscountValue] = useState("");
   const [applying, setApplying] = useState(false);
   const { toast } = useToast();
+  const { t, lang, isRTL, dir } = useAdminLanguage();
 
   // Coupons are stored as a real backend entity so they can be validated at checkout.
   const [coupons, setCoupons] = useState([]);
@@ -28,7 +30,8 @@ export default function AdminDiscounts() {
   // Resolve a record id robustly ('id' or Mongo-style '_id') so requests never hit /entities/<Name>/undefined.
   const rid = (o) => o?.id || o?._id;
   // Extract a human-readable error message from a failed request.
-  const errMsg = (e) => e?.data?.error || e?.message || "حدث خطأ غير متوقع";
+  const errMsg = (e) => e?.data?.error || e?.message || t("An unexpected error occurred", "حدث خطأ غير متوقع");
+  const productName = (p) => lang === "ar" ? (p.name_ar || p.name) : (p.name || p.name_ar);
 
   const loadCoupons = () => base44.entities.Coupon.list("-created_date", 200).then(setCoupons).catch(() => setCoupons([]));
 
@@ -41,7 +44,7 @@ export default function AdminDiscounts() {
 
   const applyBulkDiscount = async () => {
     if (!discountValue || Number(discountValue) <= 0 || selectedProducts.length === 0) {
-      toast({ title: "اختر منتجات وأدخل قيمة خصم أكبر من صفر", variant: "destructive" }); return;
+      toast({ title: t("Select products and enter a discount value greater than zero", "اختر منتجات وأدخل قيمة خصم أكبر من صفر"), variant: "destructive" }); return;
     }
     setApplying(true);
     try {
@@ -59,9 +62,9 @@ export default function AdminDiscounts() {
       const count = selectedProducts.length;
       setSelectedProducts([]);
       setDiscountValue("");
-      toast({ title: `✅ تم تطبيق الخصم على ${count} منتج` });
+      toast({ title: t(`✅ Discount applied to ${count} products`, `✅ تم تطبيق الخصم على ${count} منتج`) });
     } catch (e) {
-      toast({ title: "تعذّر تطبيق الخصم", description: errMsg(e), variant: "destructive" });
+      toast({ title: t("Failed to apply discount", "تعذّر تطبيق الخصم"), description: errMsg(e), variant: "destructive" });
     } finally {
       setApplying(false);
     }
@@ -71,15 +74,15 @@ export default function AdminDiscounts() {
     try {
       await base44.entities.Product.update(id, { compare_at_price: null });
       setProducts(prev => prev.map(p => rid(p) === id ? { ...p, compare_at_price: null } : p));
-      toast({ title: "تم إزالة الخصم" });
+      toast({ title: t("Discount removed", "تم إزالة الخصم") });
     } catch (e) {
-      toast({ title: "تعذّر إزالة الخصم", description: errMsg(e), variant: "destructive" });
+      toast({ title: t("Failed to remove discount", "تعذّر إزالة الخصم"), description: errMsg(e), variant: "destructive" });
     }
   };
 
   const addCoupon = async () => {
     if (!couponForm.code || !couponForm.value || Number(couponForm.value) <= 0) {
-      toast({ title: "أدخل الكود وقيمة أكبر من صفر", variant: "destructive" }); return;
+      toast({ title: t("Enter a code and a value greater than zero", "أدخل الكود وقيمة أكبر من صفر"), variant: "destructive" }); return;
     }
     setSavingCoupon(true);
     try {
@@ -95,22 +98,22 @@ export default function AdminDiscounts() {
       });
       await loadCoupons();
       setCouponForm({ code: "", type: "percent", value: "", min_order: "", usage_limit: "", expiry: "", active: true });
-      toast({ title: "✅ تم إضافة الكوبون" });
+      toast({ title: t("✅ Coupon added", "✅ تم إضافة الكوبون") });
     } catch (e) {
-      toast({ title: "تعذّر إضافة الكوبون", description: errMsg(e), variant: "destructive" });
+      toast({ title: t("Failed to add coupon", "تعذّر إضافة الكوبون"), description: errMsg(e), variant: "destructive" });
     } finally {
       setSavingCoupon(false);
     }
   };
 
   const deleteCoupon = async (id) => {
-    if (!confirm("هل تريد حذف هذا الكوبون؟")) return;
+    if (!confirm(t("Do you want to delete this coupon?", "هل تريد حذف هذا الكوبون؟"))) return;
     try {
       await base44.entities.Coupon.delete(id);
       await loadCoupons();
-      toast({ title: "تم حذف الكوبون" });
+      toast({ title: t("Coupon deleted", "تم حذف الكوبون") });
     } catch (e) {
-      toast({ title: "تعذّر حذف الكوبون", description: errMsg(e), variant: "destructive" });
+      toast({ title: t("Failed to delete coupon", "تعذّر حذف الكوبون"), description: errMsg(e), variant: "destructive" });
     }
   };
 
@@ -119,24 +122,24 @@ export default function AdminDiscounts() {
       await base44.entities.Coupon.update(rid(c), { active: !c.active });
       await loadCoupons();
     } catch (e) {
-      toast({ title: "تعذّر تحديث الكوبون", description: errMsg(e), variant: "destructive" });
+      toast({ title: t("Failed to update coupon", "تعذّر تحديث الكوبون"), description: errMsg(e), variant: "destructive" });
     }
   };
 
   const discountedProducts = products.filter(p => p.compare_at_price && p.compare_at_price > p.price);
 
   return (
-    <div dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+    <div dir={dir} style={{ fontFamily: "'Cairo', sans-serif" }}>
       <div className="mb-6">
-        <h1 className="text-2xl font-black">العروض والخصومات</h1>
-        <p className="text-sm text-muted-foreground mt-1">أدر خصومات المنتجات وكوبونات الخصم</p>
+        <h1 className="text-2xl font-black">{t("Offers & Discounts", "العروض والخصومات")}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{t("Manage product discounts and discount coupons", "أدر خصومات المنتجات وكوبونات الخصم")}</p>
       </div>
 
       <Tabs defaultValue="bulk">
         <TabsList className="bg-gray-100 rounded-xl mb-6">
-          <TabsTrigger value="bulk" className="rounded-lg">خصم جماعي</TabsTrigger>
-          <TabsTrigger value="active" className="rounded-lg">العروض النشطة</TabsTrigger>
-          <TabsTrigger value="coupons" className="rounded-lg">كوبونات الخصم</TabsTrigger>
+          <TabsTrigger value="bulk" className="rounded-lg">{t("Bulk Discount", "خصم جماعي")}</TabsTrigger>
+          <TabsTrigger value="active" className="rounded-lg">{t("Active Offers", "العروض النشطة")}</TabsTrigger>
+          <TabsTrigger value="coupons" className="rounded-lg">{t("Discount Coupons", "كوبونات الخصم")}</TabsTrigger>
         </TabsList>
 
         {/* Bulk Discount */}
@@ -144,31 +147,31 @@ export default function AdminDiscounts() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-1">
               <Card className="border-0 shadow-sm">
-                <CardHeader><CardTitle className="text-base font-black">إعدادات الخصم</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base font-black">{t("Discount Settings", "إعدادات الخصم")}</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label className="font-bold">نوع الخصم</Label>
+                    <Label className="font-bold">{t("Discount Type", "نوع الخصم")}</Label>
                     <div className="flex gap-2 mt-2">
                       <button onClick={() => setDiscountType("percent")}
                         className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${discountType === "percent" ? "bg-primary text-white" : "bg-gray-100"}`}>
-                        نسبة %
+                        {t("Percentage %", "نسبة %")}
                       </button>
                       <button onClick={() => setDiscountType("fixed")}
                         className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${discountType === "fixed" ? "bg-primary text-white" : "bg-gray-100"}`}>
-                        مبلغ ثابت
+                        {t("Fixed Amount", "مبلغ ثابت")}
                       </button>
                     </div>
                   </div>
                   <div>
-                    <Label className="font-bold">{discountType === "percent" ? "نسبة الخصم (%)" : "مبلغ الخصم ($)"}</Label>
+                    <Label className="font-bold">{discountType === "percent" ? t("Discount Percentage (%)", "نسبة الخصم (%)") : t("Discount Amount ($)", "مبلغ الخصم ($)")}</Label>
                     <Input className="mt-1" type="number" value={discountValue} onChange={e => setDiscountValue(e.target.value)}
-                      placeholder={discountType === "percent" ? "مثال: 20" : "مثال: 5"} />
+                      placeholder={discountType === "percent" ? t("e.g. 20", "مثال: 20") : t("e.g. 5", "مثال: 5")} />
                   </div>
                   <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
-                    تم اختيار <b>{selectedProducts.length}</b> منتج
+                    {isRTL ? (<>تم اختيار <b>{selectedProducts.length}</b> منتج</>) : (<><b>{selectedProducts.length}</b> products selected</>)}
                   </div>
                   <Button onClick={applyBulkDiscount} disabled={applying || selectedProducts.length === 0 || !discountValue} className="w-full rounded-xl font-black h-11">
-                    {applying ? "جاري التطبيق..." : "✅ تطبيق الخصم"}
+                    {applying ? t("Applying...", "جاري التطبيق...") : t("✅ Apply Discount", "✅ تطبيق الخصم")}
                   </Button>
                 </CardContent>
               </Card>
@@ -176,8 +179,8 @@ export default function AdminDiscounts() {
             <div className="lg:col-span-2">
               <Card className="border-0 shadow-sm">
                 <CardHeader className="flex flex-row items-center justify-between pb-3">
-                  <CardTitle className="text-base font-black">اختر المنتجات</CardTitle>
-                  <button className="text-xs text-primary font-bold" onClick={() => setSelectedProducts(products.map(p => rid(p)))}>اختر الكل</button>
+                  <CardTitle className="text-base font-black">{t("Select Products", "اختر المنتجات")}</CardTitle>
+                  <button className="text-xs text-primary font-bold" onClick={() => setSelectedProducts(products.map(p => rid(p)))}>{t("Select All", "اختر الكل")}</button>
                 </CardHeader>
                 <CardContent className="p-0 max-h-96 overflow-y-auto">
                   {products.map(p => (
@@ -187,10 +190,10 @@ export default function AdminDiscounts() {
                         className="rounded" />
                       <img src={p.image_url || "https://placehold.co/40?text=?"} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <div className="font-bold text-sm truncate">{p.name_ar || p.name}</div>
+                        <div className="font-bold text-sm truncate">{productName(p)}</div>
                         <div className="text-xs text-muted-foreground">{fmt(p.price)}</div>
                       </div>
-                      {p.compare_at_price && <Badge className="bg-red-100 text-red-600 text-xs">خصم نشط</Badge>}
+                      {p.compare_at_price && <Badge className="bg-red-100 text-red-600 text-xs">{t("Discount active", "خصم نشط")}</Badge>}
                     </label>
                   ))}
                 </CardContent>
@@ -202,10 +205,10 @@ export default function AdminDiscounts() {
         {/* Active Discounts */}
         <TabsContent value="active">
           <Card className="border-0 shadow-sm">
-            <CardHeader><CardTitle className="text-base font-black">المنتجات ذات الخصومات النشطة ({discountedProducts.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base font-black">{t(`Products with active discounts (${discountedProducts.length})`, `المنتجات ذات الخصومات النشطة (${discountedProducts.length})`)}</CardTitle></CardHeader>
             <CardContent className="p-0">
               {discountedProducts.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">لا توجد خصومات نشطة</div>
+                <div className="p-8 text-center text-muted-foreground">{t("No active discounts", "لا توجد خصومات نشطة")}</div>
               ) : (
                 <div className="divide-y divide-gray-50">
                   {discountedProducts.map(p => {
@@ -214,7 +217,7 @@ export default function AdminDiscounts() {
                       <div key={rid(p)} className="flex items-center gap-3 px-4 py-3">
                         <img src={p.image_url || "https://placehold.co/40?text=?"} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="font-bold text-sm truncate">{p.name_ar || p.name}</div>
+                          <div className="font-bold text-sm truncate">{productName(p)}</div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="font-black text-primary">{fmt(p.price)}</span>
                             <span className="text-xs text-muted-foreground line-through">{fmt(p.compare_at_price)}</span>
@@ -222,7 +225,7 @@ export default function AdminDiscounts() {
                           </div>
                         </div>
                         <Button variant="outline" size="sm" onClick={() => removeDiscount(rid(p))} className="text-red-500 border-red-200 hover:bg-red-50 rounded-xl text-xs">
-                          إزالة الخصم
+                          {t("Remove Discount", "إزالة الخصم")}
                         </Button>
                       </div>
                     );
@@ -237,50 +240,50 @@ export default function AdminDiscounts() {
         <TabsContent value="coupons">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="border-0 shadow-sm">
-              <CardHeader><CardTitle className="text-base font-black">إضافة كوبون جديد</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base font-black">{t("Add New Coupon", "إضافة كوبون جديد")}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <Label className="font-bold">كود الخصم *</Label>
+                  <Label className="font-bold">{t("Discount Code *", "كود الخصم *")}</Label>
                   <Input className="mt-1 uppercase" value={couponForm.code} onChange={e => setCouponForm(f => ({...f, code: e.target.value.toUpperCase()}))}
-                    placeholder="مثال: SAVE10" style={{ direction: "ltr", letterSpacing: "0.1em", fontWeight: "bold" }} />
+                    placeholder="e.g. SAVE10" style={{ direction: "ltr", letterSpacing: "0.1em", fontWeight: "bold" }} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="font-bold">نوع الخصم</Label>
+                    <Label className="font-bold">{t("Discount Type", "نوع الخصم")}</Label>
                     <select value={couponForm.type} onChange={e => setCouponForm(f => ({...f, type: e.target.value}))}
                       className="mt-1 w-full border border-input rounded-xl px-3 py-2 text-sm bg-white outline-none">
-                      <option value="percent">نسبة %</option>
-                      <option value="fixed">مبلغ ثابت</option>
+                      <option value="percent">{t("Percentage %", "نسبة %")}</option>
+                      <option value="fixed">{t("Fixed Amount", "مبلغ ثابت")}</option>
                     </select>
                   </div>
                   <div>
-                    <Label className="font-bold">القيمة *</Label>
+                    <Label className="font-bold">{t("Value *", "القيمة *")}</Label>
                     <Input className="mt-1" type="number" value={couponForm.value} onChange={e => setCouponForm(f => ({...f, value: e.target.value}))}
                       placeholder={couponForm.type === "percent" ? "20" : "5"} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="font-bold">الحد الأدنى للطلب ($)</Label>
-                    <Input className="mt-1" type="number" value={couponForm.min_order} onChange={e => setCouponForm(f => ({...f, min_order: e.target.value}))} placeholder="اختياري" />
+                    <Label className="font-bold">{t("Minimum Order ($)", "الحد الأدنى للطلب ($)")}</Label>
+                    <Input className="mt-1" type="number" value={couponForm.min_order} onChange={e => setCouponForm(f => ({...f, min_order: e.target.value}))} placeholder={t("Optional", "اختياري")} />
                   </div>
                   <div>
-                    <Label className="font-bold">تاريخ الانتهاء</Label>
+                    <Label className="font-bold">{t("Expiry Date", "تاريخ الانتهاء")}</Label>
                     <Input className="mt-1" type="date" value={couponForm.expiry} onChange={e => setCouponForm(f => ({...f, expiry: e.target.value}))} />
                   </div>
                 </div>
                 <Button onClick={addCoupon} disabled={savingCoupon} className="w-full rounded-xl font-black h-11">
-                  <Plus className="w-4 h-4 ml-2" />
-                  {savingCoupon ? "جاري الحفظ..." : "إضافة الكوبون"}
+                  <Plus className={`w-4 h-4 ${isRTL ? "ml-2" : "mr-2"}`} />
+                  {savingCoupon ? t("Saving...", "جاري الحفظ...") : t("Add Coupon", "إضافة الكوبون")}
                 </Button>
               </CardContent>
             </Card>
 
             <Card className="border-0 shadow-sm">
-              <CardHeader><CardTitle className="text-base font-black">الكوبونات ({coupons.length})</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base font-black">{t(`Coupons (${coupons.length})`, `الكوبونات (${coupons.length})`)}</CardTitle></CardHeader>
               <CardContent className="p-0">
                 {coupons.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">لا توجد كوبونات بعد</div>
+                  <div className="p-8 text-center text-muted-foreground">{t("No coupons yet", "لا توجد كوبونات بعد")}</div>
                 ) : (
                   <div className="divide-y divide-gray-50">
                     {coupons.map(c => (
@@ -288,9 +291,9 @@ export default function AdminDiscounts() {
                         <div className="flex-1 min-w-0">
                           <div className="font-black text-primary" style={{ letterSpacing: "0.1em", direction: "ltr" }}>{c.code}</div>
                           <div className="text-xs text-muted-foreground">
-                            {c.type === "percent" ? `${c.value}% خصم` : `$${c.value} خصم`}
-                            {c.min_order && ` · حد أدنى $${c.min_order}`}
-                            {c.expiry && ` · ينتهي ${c.expiry}`}
+                            {c.type === "percent" ? t(`${c.value}% off`, `${c.value}% خصم`) : t(`$${c.value} off`, `$${c.value} خصم`)}
+                            {c.min_order ? t(` · min $${c.min_order}`, ` · حد أدنى $${c.min_order}`) : ""}
+                            {c.expiry ? t(` · expires ${c.expiry}`, ` · ينتهي ${c.expiry}`) : ""}
                           </div>
                         </div>
                         <Switch checked={!!c.active} onCheckedChange={() => toggleCoupon(c)} />

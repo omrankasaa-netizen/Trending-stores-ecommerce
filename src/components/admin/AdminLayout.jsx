@@ -1,35 +1,36 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, ShoppingBag, Package, BarChart2, FolderOpen, Home, Settings, Mail, Menu, X, ExternalLink, ChevronRight, Percent, Shield, ScrollText, Users, DollarSign
+  LayoutDashboard, ShoppingBag, Package, BarChart2, FolderOpen, Home, Settings, Mail, Menu, X, ExternalLink, ChevronRight, Percent, Shield, ScrollText, Users, DollarSign, Languages
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Outlet } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
+import { AdminLanguageProvider, useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 const NAV = [
-  { label: "لوحة التحكم", labelEn: "Dashboard",    path: "/admin",            icon: LayoutDashboard },
-  { label: "الطلبات",     labelEn: "Orders",         path: "/admin/orders",     icon: ShoppingBag },
-  { label: "العملاء",     labelEn: "Customers",       path: "/admin/customers",  icon: Users },
-  { label: "المنتجات",    labelEn: "Products",        path: "/admin/products",   icon: Package },
-  { label: "المخزون",     labelEn: "Inventory",       path: "/admin/inventory",  icon: BarChart2 },
-  { label: "الفئات",      labelEn: "Categories",      path: "/admin/categories", icon: FolderOpen },
-  { label: "العروض",      labelEn: "Discounts",       path: "/admin/discounts",  icon: Percent },
-  { label: "المحتوى",     labelEn: "Homepage",        path: "/admin/content",    icon: Home },
-  { label: "سجل الإيميل", labelEn: "Email Log",       path: "/admin/emails",     icon: Mail },
-  { label: "الإعدادات",   labelEn: "Settings",        path: "/admin/settings",   icon: Settings },
+  { labelEn: "Dashboard",    labelAr: "لوحة التحكم",   path: "/admin",            icon: LayoutDashboard },
+  { labelEn: "Orders",       labelAr: "الطلبات",       path: "/admin/orders",     icon: ShoppingBag },
+  { labelEn: "Customers",    labelAr: "العملاء",       path: "/admin/customers",  icon: Users },
+  { labelEn: "Products",     labelAr: "المنتجات",      path: "/admin/products",   icon: Package },
+  { labelEn: "Inventory",    labelAr: "المخزون",       path: "/admin/inventory",  icon: BarChart2 },
+  { labelEn: "Categories",   labelAr: "الفئات",        path: "/admin/categories", icon: FolderOpen },
+  { labelEn: "Discounts",    labelAr: "العروض",        path: "/admin/discounts",  icon: Percent },
+  { labelEn: "Homepage",     labelAr: "المحتوى",       path: "/admin/content",    icon: Home },
+  { labelEn: "Email Log",    labelAr: "سجل الإيميل",   path: "/admin/emails",     icon: Mail },
+  { labelEn: "Settings",     labelAr: "الإعدادات",     path: "/admin/settings",   icon: Settings },
 ];
 
 // Owner-only entries appended for super_admin users.
 const SUPER_ADMIN_NAV = [
-  { label: "المالية",          labelEn: "Finances",     path: "/admin/finances", icon: DollarSign },
-  { label: "الفريق والصلاحيات", labelEn: "Team & Roles", path: "/admin/team",     icon: Shield },
-  { label: "سجل التدقيق",       labelEn: "Audit Log",    path: "/admin/audit",    icon: ScrollText },
+  { labelEn: "Finances",     labelAr: "المالية",          path: "/admin/finances", icon: DollarSign },
+  { labelEn: "Team & Roles", labelAr: "الفريق والصلاحيات", path: "/admin/team",     icon: Shield },
+  { labelEn: "Audit Log",    labelAr: "سجل التدقيق",       path: "/admin/audit",    icon: ScrollText },
 ];
 
-export default function AdminLayout() {
+function AdminLayoutInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState(null);
@@ -37,6 +38,7 @@ export default function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t, lang, toggleLang, dir, isRTL } = useAdminLanguage();
   const navItems = user?.role === "super_admin" ? [...NAV, ...SUPER_ADMIN_NAV] : NAV;
 
   const handleSearch = async (q) => {
@@ -70,7 +72,7 @@ export default function AdminLayout() {
           </div>
           <div>
             <div className="text-white font-black text-base leading-none">Trending Store</div>
-            <div className="text-white/60 text-xs mt-0.5">لوحة الإدارة</div>
+            <div className="text-white/60 text-xs mt-0.5">{t("Admin Panel", "لوحة الإدارة")}</div>
           </div>
         </div>
       </div>
@@ -85,8 +87,8 @@ export default function AdminLayout() {
               className={`flex items-center gap-3 px-4 py-3 rounded-xl mb-1 transition-all group ${active ? "bg-white text-primary font-bold shadow-sm" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
             >
               <item.icon className="w-4.5 h-4.5 flex-shrink-0" style={{ width: 18, height: 18 }} />
-              <span className="text-sm">{item.label}</span>
-              {active && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+              <span className="text-sm">{t(item.labelEn, item.labelAr)}</span>
+              {active && <ChevronRight className={`w-4 h-4 opacity-50 ${isRTL ? "ml-auto rotate-180" : "ml-auto"}`} />}
             </Link>
           );
         })}
@@ -95,7 +97,7 @@ export default function AdminLayout() {
         <Link to="/" target="_blank">
           <Button variant="ghost" size="sm" className="w-full text-white/70 hover:text-white hover:bg-white/10 gap-2 justify-start">
             <ExternalLink className="w-4 h-4" />
-            <span className="text-sm">عرض المتجر</span>
+            <span className="text-sm">{t("View Store", "عرض المتجر")}</span>
           </Button>
         </Link>
       </div>
@@ -103,7 +105,7 @@ export default function AdminLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex" dir="rtl">
+    <div className="min-h-screen bg-gray-50 flex" dir={dir}>
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col w-60 bg-primary flex-shrink-0 sticky top-0 h-screen overflow-y-auto">
         <SidebarContent />
@@ -114,7 +116,7 @@ export default function AdminLayout() {
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
           <div className="relative w-64 bg-primary flex flex-col h-full shadow-xl z-10">
-            <button className="absolute top-4 left-4 text-white/70 hover:text-white" onClick={() => setSidebarOpen(false)}>
+            <button className={`absolute top-4 text-white/70 hover:text-white ${isRTL ? "left-4" : "right-4"}`} onClick={() => setSidebarOpen(false)}>
               <X className="w-5 h-5" />
             </button>
             <SidebarContent />
@@ -133,22 +135,22 @@ export default function AdminLayout() {
           {/* Global Search */}
           <div className="flex-1 max-w-md relative">
             <Input
-              placeholder="ابحث عن منتج أو طلب أو رقم هاتف..."
+              placeholder={t("Search for a product, order, or phone number...", "ابحث عن منتج أو طلب أو رقم هاتف...")}
               value={search}
               onChange={e => handleSearch(e.target.value)}
-              className="text-right pr-4 pl-4 rounded-xl border-gray-200 text-sm"
-              style={{ fontFamily: "'Cairo', sans-serif", direction: "rtl" }}
+              className={`rounded-xl border-gray-200 text-sm ${isRTL ? "text-right pr-4 pl-4" : "text-left pl-4 pr-4"}`}
+              style={isRTL ? { fontFamily: "'Cairo', sans-serif", direction: "rtl" } : { direction: "ltr" }}
             />
             {searchResults && (
               <div className="absolute top-full mt-2 w-full bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
                 {searchResults.orders.length > 0 && (
                   <div>
-                    <div className="px-4 py-2 text-xs font-bold text-muted-foreground bg-gray-50">الطلبات</div>
+                    <div className={`px-4 py-2 text-xs font-bold text-muted-foreground bg-gray-50 ${isRTL ? "text-right" : "text-left"}`}>{t("Orders", "الطلبات")}</div>
                     {searchResults.orders.map(o => (
-                      <button key={o.id} className="w-full px-4 py-2.5 text-right hover:bg-gray-50 flex items-center justify-between"
+                      <button key={o.id} className={`w-full px-4 py-2.5 hover:bg-gray-50 flex items-center justify-between ${isRTL ? "text-right" : "text-left"}`}
                         onClick={() => { navigate(`/admin/orders/${o.id}`); setSearch(""); setSearchResults(null); }}>
                         <span className="text-xs text-muted-foreground">{o.customer_phone}</span>
-                        <div className="text-right">
+                        <div className={isRTL ? "text-right" : "text-left"}>
                           <div className="text-sm font-bold">{o.order_number}</div>
                           <div className="text-xs text-muted-foreground">{o.customer_name}</div>
                         </div>
@@ -158,13 +160,13 @@ export default function AdminLayout() {
                 )}
                 {searchResults.products.length > 0 && (
                   <div>
-                    <div className="px-4 py-2 text-xs font-bold text-muted-foreground bg-gray-50">المنتجات</div>
+                    <div className={`px-4 py-2 text-xs font-bold text-muted-foreground bg-gray-50 ${isRTL ? "text-right" : "text-left"}`}>{t("Products", "المنتجات")}</div>
                     {searchResults.products.map(p => (
-                      <button key={p.id} className="w-full px-4 py-2.5 text-right hover:bg-gray-50 flex items-center gap-3"
+                      <button key={p.id} className={`w-full px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 ${isRTL ? "text-right" : "text-left"}`}
                         onClick={() => { navigate(`/admin/products?edit=${p.id}`); setSearch(""); setSearchResults(null); }}>
                         {p.image_url && <img src={p.image_url} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />}
-                        <div className="text-right flex-1">
-                          <div className="text-sm font-bold">{p.name}</div>
+                        <div className={`flex-1 ${isRTL ? "text-right" : "text-left"}`}>
+                          <div className="text-sm font-bold">{lang === "ar" ? (p.name_ar || p.name) : (p.name || p.name_ar)}</div>
                           <div className="text-xs text-muted-foreground" style={{ fontFamily: "'Cairo', sans-serif" }}>{p.name_ar}</div>
                         </div>
                       </button>
@@ -172,11 +174,22 @@ export default function AdminLayout() {
                   </div>
                 )}
                 {searchResults.orders.length === 0 && searchResults.products.length === 0 && (
-                  <div className="px-4 py-4 text-center text-sm text-muted-foreground">لا توجد نتائج</div>
+                  <div className="px-4 py-4 text-center text-sm text-muted-foreground">{t("No results found", "لا توجد نتائج")}</div>
                 )}
               </div>
             )}
           </div>
+
+          {/* Language Toggle */}
+          <button
+            onClick={toggleLang}
+            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-sm font-bold text-gray-700 flex-shrink-0"
+            title={t("Switch to Arabic", "التبديل إلى الإنجليزية")}
+            aria-label={t("Switch language", "تغيير اللغة")}
+          >
+            <Languages className="w-4 h-4" />
+            <span>{t("العربية", "EN")}</span>
+          </button>
         </header>
 
         {/* Page Content */}
@@ -185,5 +198,13 @@ export default function AdminLayout() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function AdminLayout() {
+  return (
+    <AdminLanguageProvider>
+      <AdminLayoutInner />
+    </AdminLanguageProvider>
   );
 }

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/lib/AuthContext";
 import { Users, Shield, UserPlus } from "lucide-react";
+import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 const ROLES = [
   { value: "customer", label: "عميل", labelEn: "Customer" },
@@ -25,12 +26,15 @@ const ROLE_BADGE = {
 export default function AdminTeam() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t, lang, dir } = useAdminLanguage();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("staff");
   const [inviting, setInviting] = useState(false);
+
+  const roleLabel = (r) => lang === "ar" ? r.label : r.labelEn;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -47,10 +51,10 @@ export default function AdminTeam() {
     setBusyId(u.id);
     try {
       await base44.functions.setUserRole({ user_id: u.id, role });
-      toast({ title: "تم تحديث الصلاحية" });
+      toast({ title: t("Role updated", "تم تحديث الصلاحية") });
       load();
     } catch (e) {
-      toast({ title: "تعذّر تحديث الصلاحية", description: e?.data?.error || e?.message, variant: "destructive" });
+      toast({ title: t("Failed to update role", "تعذّر تحديث الصلاحية"), description: e?.data?.error || e?.message, variant: "destructive" });
     } finally {
       setBusyId(null);
     }
@@ -65,30 +69,30 @@ export default function AdminTeam() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
-      }).then(async (r) => { if (!r.ok) throw new Error((await r.json())?.error || "فشل"); });
-      toast({ title: "تمت الدعوة" });
+      }).then(async (r) => { if (!r.ok) throw new Error((await r.json())?.error || t("Failed", "فشل")); });
+      toast({ title: t("Invitation sent", "تمت الدعوة") });
       setInviteEmail("");
       load();
     } catch (e) {
-      toast({ title: "تعذّرت الدعوة", description: e?.message, variant: "destructive" });
+      toast({ title: t("Invitation failed", "تعذّرت الدعوة"), description: e?.message, variant: "destructive" });
     } finally {
       setInviting(false);
     }
   };
 
   return (
-    <div dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+    <div dir={dir} style={{ fontFamily: "'Cairo', sans-serif" }}>
       <div className="mb-6 flex items-center gap-2">
         <Shield className="w-6 h-6 text-amber-600" />
         <div>
-          <h1 className="text-2xl font-black">الفريق والصلاحيات</h1>
-          <p className="text-sm text-muted-foreground mt-1">إدارة أدوار المستخدمين — للمالك فقط</p>
+          <h1 className="text-2xl font-black">{t("Team & Permissions", "الفريق والصلاحيات")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("Manage user roles — owner only", "إدارة أدوار المستخدمين — للمالك فقط")}</p>
         </div>
       </div>
 
       <Card className="border-0 shadow-sm mb-6">
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3 text-sm font-bold"><UserPlus className="w-4 h-4" /> دعوة عضو</div>
+          <div className="flex items-center gap-2 mb-3 text-sm font-bold"><UserPlus className="w-4 h-4" /> {t("Invite a member", "دعوة عضو")}</div>
           <div className="flex flex-col sm:flex-row gap-2">
             <Input
               placeholder="email@example.com"
@@ -102,12 +106,12 @@ export default function AdminTeam() {
               onChange={(e) => setInviteRole(e.target.value)}
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             >
-              {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              {ROLES.map((r) => <option key={r.value} value={r.value}>{roleLabel(r)}</option>)}
             </select>
-            <Button onClick={invite} disabled={inviting}>{inviting ? "..." : "دعوة"}</Button>
+            <Button onClick={invite} disabled={inviting}>{inviting ? "..." : t("Invite", "دعوة")}</Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            ملاحظة: منح صلاحية «مدير» أو «مالك» متاح للمالك فقط.
+            {t("Note: granting \"Admin\" or \"Super Admin\" is available to the owner only.", "ملاحظة: منح صلاحية «مدير» أو «مالك» متاح للمالك فقط.")}
           </p>
         </CardContent>
       </Card>
@@ -115,11 +119,11 @@ export default function AdminTeam() {
       <Card className="border-0 shadow-sm">
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-8 text-center text-muted-foreground">جاري التحميل...</div>
+            <div className="p-8 text-center text-muted-foreground">{t("Loading...", "جاري التحميل...")}</div>
           ) : users.length === 0 ? (
             <div className="p-12 text-center">
               <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-30" />
-              <p className="text-muted-foreground font-bold">لا يوجد مستخدمون</p>
+              <p className="text-muted-foreground font-bold">{t("No users", "لا يوجد مستخدمون")}</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -130,7 +134,7 @@ export default function AdminTeam() {
                     <div className="text-xs text-muted-foreground" dir="ltr">{u.email}</div>
                   </div>
                   <Badge className={`text-xs ${ROLE_BADGE[u.role] || ROLE_BADGE.customer}`}>
-                    {ROLES.find((r) => r.value === u.role)?.label || u.role}
+                    {(() => { const r = ROLES.find((x) => x.value === u.role); return r ? roleLabel(r) : u.role; })()}
                   </Badge>
                   <select
                     value={u.role}
@@ -138,7 +142,7 @@ export default function AdminTeam() {
                     onChange={(e) => changeRole(u, e.target.value)}
                     className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50"
                   >
-                    {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    {ROLES.map((r) => <option key={r.value} value={r.value}>{roleLabel(r)}</option>)}
                   </select>
                 </div>
               ))}

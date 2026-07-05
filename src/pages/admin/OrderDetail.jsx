@@ -6,30 +6,33 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { ArrowRight, MessageCircle, Printer, Phone } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 const FLOW = ["pending", "confirmed", "processing", "shipped", "delivered"];
 const STATUS_CONFIG = {
-  pending:    { label: "في الانتظار",  color: "bg-yellow-100 text-yellow-800", next: "confirmed" },
-  confirmed:  { label: "مؤكد",        color: "bg-blue-100 text-blue-800",    next: "processing" },
-  processing: { label: "قيد التجهيز", color: "bg-purple-100 text-purple-800", next: "shipped" },
-  shipped:    { label: "في الطريق",   color: "bg-indigo-100 text-indigo-800", next: "delivered" },
-  delivered:  { label: "تم التسليم",  color: "bg-green-100 text-green-800",   next: null },
-  cancelled:  { label: "ملغي",        color: "bg-red-100 text-red-800",       next: null },
-  returned:   { label: "مُعاد",        color: "bg-gray-100 text-gray-700",    next: null },
+  pending:    { labelAr: "في الانتظار",  labelEn: "Pending",    color: "bg-yellow-100 text-yellow-800", next: "confirmed" },
+  confirmed:  { labelAr: "مؤكد",        labelEn: "Confirmed",   color: "bg-blue-100 text-blue-800",    next: "processing" },
+  processing: { labelAr: "قيد التجهيز", labelEn: "Preparing",   color: "bg-purple-100 text-purple-800", next: "shipped" },
+  shipped:    { labelAr: "في الطريق",   labelEn: "Shipping",    color: "bg-indigo-100 text-indigo-800", next: "delivered" },
+  delivered:  { labelAr: "تم التسليم",  labelEn: "Delivered",   color: "bg-green-100 text-green-800",   next: null },
+  cancelled:  { labelAr: "ملغي",        labelEn: "Cancelled",   color: "bg-red-100 text-red-800",       next: null },
+  returned:   { labelAr: "مُعاد",        labelEn: "Returned",    color: "bg-gray-100 text-gray-700",    next: null },
 };
 const NEXT_LABEL = {
-  pending:    "تأكيد الطلب ✓",
-  confirmed:  "بدء التجهيز 📦",
-  processing: "إرسال للتوصيل 🚚",
-  shipped:    "تم التسليم ✅",
+  pending:    { ar: "تأكيد الطلب ✓",    en: "Confirm Order ✓" },
+  confirmed:  { ar: "بدء التجهيز 📦",    en: "Start Preparing 📦" },
+  processing: { ar: "إرسال للتوصيل 🚚",  en: "Send for Delivery 🚚" },
+  shipped:    { ar: "تم التسليم ✅",     en: "Mark as Delivered ✅" },
 };
 
+// Customer-facing WhatsApp message — kept in Arabic since the store's customers are Arabic-speaking.
 function buildWhatsAppMsg(order) {
   const itemsText = (order.items || []).map(i => `- ${i.product_name_ar || i.product_name} ×${i.quantity}`).join("\n");
   const msg = `مرحباً ${order.customer_name}! 🎉\n\nطلبك رقم ${order.order_number} من متجر ترندينج ستور:\n\n${itemsText}\n\nالمجموع: ${formatPrice(order.total)} (دفع عند الاستلام)\n\nشكراً لثقتك بنا! 💙`;
   return `https://wa.me/${(order.customer_phone || "").replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`;
 }
 
+// Printed packing slip for the local delivery courier — kept in Arabic.
 function buildPackingSlip(order) {
   const items = (order.items || []).map(i =>
     `<tr><td>${i.product_name_ar || i.product_name}</td><td>${i.quantity}</td><td>${formatPrice(i.price * i.quantity)}</td></tr>`
@@ -54,6 +57,7 @@ export default function OrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t, lang, isRTL, dir } = useAdminLanguage();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -74,16 +78,16 @@ export default function OrderDetail() {
     const updated = await base44.entities.Order.update(order.id, { status: next });
     setOrder(updated);
     notifyStatus(order.id, next);
-    toast({ title: `تم تحديث الحالة إلى: ${STATUS_CONFIG[next]?.label}` });
+    toast({ title: t(`Status updated to: ${STATUS_CONFIG[next]?.labelEn}`, `تم تحديث الحالة إلى: ${STATUS_CONFIG[next]?.labelAr}`) });
     setUpdating(false);
   };
 
   const cancelOrder = async () => {
-    if (!confirm("هل أنت متأكد من إلغاء هذا الطلب؟")) return;
+    if (!confirm(t("Are you sure you want to cancel this order?", "هل أنت متأكد من إلغاء هذا الطلب؟"))) return;
     const updated = await base44.entities.Order.update(order.id, { status: "cancelled" });
     setOrder(updated);
     notifyStatus(order.id, "cancelled");
-    toast({ title: "تم إلغاء الطلب" });
+    toast({ title: t("Order cancelled", "تم إلغاء الطلب") });
   };
 
   const printSlip = () => {
@@ -93,35 +97,35 @@ export default function OrderDetail() {
     w.print();
   };
 
-  if (loading) return <div className="p-8 text-center text-muted-foreground" style={{ fontFamily: "'Cairo', sans-serif" }}>جاري التحميل...</div>;
-  if (!order) return <div className="p-8 text-center text-muted-foreground" style={{ fontFamily: "'Cairo', sans-serif" }}>الطلب غير موجود</div>;
+  if (loading) return <div className="p-8 text-center text-muted-foreground" style={{ fontFamily: "'Cairo', sans-serif" }}>{t("Loading...", "جاري التحميل...")}</div>;
+  if (!order) return <div className="p-8 text-center text-muted-foreground" style={{ fontFamily: "'Cairo', sans-serif" }}>{t("Order not found", "الطلب غير موجود")}</div>;
 
   const sc = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
   const nextLabel = NEXT_LABEL[order.status];
 
   return (
-    <div dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+    <div dir={dir} style={{ fontFamily: "'Cairo', sans-serif" }}>
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate("/admin/orders")} className="p-2 rounded-xl hover:bg-gray-100">
-            <ArrowRight className="w-5 h-5" />
+            <ArrowRight className={`w-5 h-5 ${!isRTL ? "rotate-180" : ""}`} />
           </button>
           <div>
             <h1 className="text-xl font-black">{order.order_number}</h1>
             <div className="flex items-center gap-2 mt-0.5">
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${sc.color}`}>
-                {sc.label}
+                {t(sc.labelEn, sc.labelAr)}
               </span>
               <span className="text-xs text-muted-foreground">
-                {new Date(order.created_date).toLocaleDateString("ar-LB", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {new Date(order.created_date).toLocaleDateString(lang === "ar" ? "ar-LB" : "en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
           </div>
         </div>
         <Button onClick={printSlip} variant="outline" size="sm" className="gap-2">
           <Printer className="w-4 h-4" />
-          طباعة وصل التوصيل
+          {t("Print Packing Slip", "طباعة وصل التوصيل")}
         </Button>
       </div>
 
@@ -139,7 +143,7 @@ export default function OrderDetail() {
                     {i + 1}
                   </div>
                   <span className={`text-xs whitespace-nowrap ${done ? "text-primary font-bold" : "text-muted-foreground"}`}>
-                    {STATUS_CONFIG[s]?.label}
+                    {t(STATUS_CONFIG[s]?.labelEn, STATUS_CONFIG[s]?.labelAr)}
                   </span>
                   {i < FLOW.length - 1 && <div className={`w-8 h-0.5 mx-1 ${done && i < idx ? "bg-primary" : "bg-gray-200"}`} />}
                 </div>
@@ -149,24 +153,24 @@ export default function OrderDetail() {
           <div className="flex gap-3 flex-wrap">
             {nextLabel && (
               <Button onClick={advanceStatus} disabled={updating} className="gap-2 rounded-xl h-11 flex-1">
-                {updating ? "جاري التحديث..." : nextLabel}
+                {updating ? t("Updating...", "جاري التحديث...") : t(nextLabel.en, nextLabel.ar)}
               </Button>
             )}
             <a href={buildWhatsAppMsg(order)} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" className="gap-2 rounded-xl h-11 text-green-600 border-green-200 hover:bg-green-50">
                 <MessageCircle className="w-4 h-4" />
-                تواصل واتساب
+                {t("WhatsApp", "تواصل واتساب")}
               </Button>
             </a>
             <a href={`tel:${order.customer_phone}`}>
               <Button variant="outline" className="gap-2 rounded-xl h-11">
                 <Phone className="w-4 h-4" />
-                اتصال
+                {t("Call", "اتصال")}
               </Button>
             </a>
             {order.status !== "cancelled" && order.status !== "delivered" && (
               <Button variant="outline" onClick={cancelOrder} className="gap-2 rounded-xl h-11 text-red-500 border-red-200 hover:bg-red-50">
-                إلغاء الطلب
+                {t("Cancel Order", "إلغاء الطلب")}
               </Button>
             )}
           </div>
@@ -177,34 +181,34 @@ export default function OrderDetail() {
         {/* Customer Info */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-black">معلومات العميل</CardTitle>
+            <CardTitle className="text-sm font-black">{t("Customer Information", "معلومات العميل")}</CardTitle>
           </CardHeader>
           <CardContent className="text-sm space-y-3">
             <div>
-              <div className="text-xs text-muted-foreground mb-0.5">الاسم</div>
+              <div className="text-xs text-muted-foreground mb-0.5">{t("Name", "الاسم")}</div>
               <div className="font-bold">{order.customer_name}</div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground mb-0.5">الهاتف</div>
+              <div className="text-xs text-muted-foreground mb-0.5">{t("Phone", "الهاتف")}</div>
               <div className="font-bold" dir="ltr">{order.customer_phone}</div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground mb-0.5">المدينة</div>
+              <div className="text-xs text-muted-foreground mb-0.5">{t("City", "المدينة")}</div>
               <div className="font-bold">{order.customer_city}</div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground mb-0.5">العنوان</div>
+              <div className="text-xs text-muted-foreground mb-0.5">{t("Address", "العنوان")}</div>
               <div className="font-bold">{order.customer_address}</div>
             </div>
             {order.customer_notes && (
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">ملاحظات العميل</div>
+                <div className="text-xs text-muted-foreground mb-0.5">{t("Customer Notes", "ملاحظات العميل")}</div>
                 <div className="bg-amber-50 text-amber-800 rounded-xl p-2 text-xs">{order.customer_notes}</div>
               </div>
             )}
             <div>
-              <div className="text-xs text-muted-foreground mb-0.5">طريقة الدفع</div>
-              <div className="font-bold">الدفع عند الاستلام 💵</div>
+              <div className="text-xs text-muted-foreground mb-0.5">{t("Payment Method", "طريقة الدفع")}</div>
+              <div className="font-bold">{t("Cash on Delivery 💵", "الدفع عند الاستلام 💵")}</div>
             </div>
           </CardContent>
         </Card>
@@ -212,7 +216,7 @@ export default function OrderDetail() {
         {/* Order Items */}
         <Card className="border-0 shadow-sm lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-black">المنتجات</CardTitle>
+            <CardTitle className="text-sm font-black">{t("Products", "المنتجات")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 mb-4">
@@ -222,8 +226,8 @@ export default function OrderDetail() {
                     <img src={item.image_url} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="font-bold text-sm">{item.product_name_ar || item.product_name}</div>
-                    <div className="text-xs text-muted-foreground">الكمية: {item.quantity}</div>
+                    <div className="font-bold text-sm">{lang === "ar" ? (item.product_name_ar || item.product_name) : (item.product_name || item.product_name_ar)}</div>
+                    <div className="text-xs text-muted-foreground">{t("Quantity", "الكمية")}: {item.quantity}</div>
                   </div>
                   <div className="font-black text-primary">{formatPrice(item.price * item.quantity)}</div>
                 </div>
@@ -231,15 +235,15 @@ export default function OrderDetail() {
             </div>
             <div className="border-t border-gray-100 pt-3 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">المجموع الفرعي</span>
+                <span className="text-muted-foreground">{t("Subtotal", "المجموع الفرعي")}</span>
                 <span className="font-bold">{formatPrice(order.subtotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">رسوم التوصيل</span>
+                <span className="text-muted-foreground">{t("Delivery Fee", "رسوم التوصيل")}</span>
                 <span className="font-bold">{formatPrice(order.delivery_fee)}</span>
               </div>
               <div className="flex justify-between border-t border-gray-100 pt-2">
-                <span className="font-black text-base">المبلغ المطلوب تحصيله</span>
+                <span className="font-black text-base">{t("Amount to Collect", "المبلغ المطلوب تحصيله")}</span>
                 <span className="font-black text-xl text-primary">{formatPrice(order.total)}</span>
               </div>
             </div>
