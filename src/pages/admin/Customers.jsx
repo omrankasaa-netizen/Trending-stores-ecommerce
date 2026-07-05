@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { Users, Download, MessageCircle, Search } from "lucide-react";
+import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 function downloadCsv(filename, csv) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -20,6 +21,7 @@ function downloadCsv(filename, csv) {
 
 export default function AdminCustomers() {
   const { toast } = useToast();
+  const { t, isRTL, dir } = useAdminLanguage();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -36,7 +38,7 @@ export default function AdminCustomers() {
       const res = await base44.functions.exportCustomersCsv();
       if (res?.csv) downloadCsv(res.filename, res.csv);
     } catch (e) {
-      toast({ title: "تعذّر التصدير", description: e?.data?.error || e?.message, variant: "destructive" });
+      toast({ title: t("Export failed", "تعذّر التصدير"), description: e?.data?.error || e?.message, variant: "destructive" });
     }
   };
 
@@ -49,33 +51,33 @@ export default function AdminCustomers() {
     : customers;
 
   return (
-    <div dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+    <div dir={dir} style={{ fontFamily: "'Cairo', sans-serif" }}>
       <div className="mb-6 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Users className="w-6 h-6 text-primary" />
           <div>
-            <h1 className="text-2xl font-black">العملاء</h1>
-            <p className="text-sm text-muted-foreground mt-1">{customers.length} عميل — مُستخرَج من الطلبات</p>
+            <h1 className="text-2xl font-black">{t("Customers", "العملاء")}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{t(`${customers.length} customers — derived from orders`, `${customers.length} عميل — مُستخرَج من الطلبات`)}</p>
           </div>
         </div>
         <Button variant="outline" onClick={exportCsv}>
-          <Download className="w-4 h-4 ml-1" /> تصدير CSV
+          <Download className={`w-4 h-4 ${isRTL ? "ml-1" : "mr-1"}`} /> {t("Export CSV", "تصدير CSV")}
         </Button>
       </div>
 
       <div className="relative mb-4 max-w-sm">
-        <Search className="w-4 h-4 absolute top-3 right-3 text-muted-foreground" />
-        <Input placeholder="ابحث بالاسم أو الهاتف أو الإيميل" value={q} onChange={(e) => setQ(e.target.value)} className="pr-9" />
+        <Search className={`w-4 h-4 absolute top-3 text-muted-foreground ${isRTL ? "right-3" : "left-3"}`} />
+        <Input placeholder={t("Search by name, phone, or email", "ابحث بالاسم أو الهاتف أو الإيميل")} value={q} onChange={(e) => setQ(e.target.value)} className={isRTL ? "pr-9" : "pl-9"} style={{ direction: isRTL ? "rtl" : "ltr" }} />
       </div>
 
       <Card className="border-0 shadow-sm">
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-8 text-center text-muted-foreground">جاري التحميل...</div>
+            <div className="p-8 text-center text-muted-foreground">{t("Loading...", "جاري التحميل...")}</div>
           ) : filtered.length === 0 ? (
             <div className="p-12 text-center">
               <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-30" />
-              <p className="text-muted-foreground font-bold">لا يوجد عملاء بعد</p>
+              <p className="text-muted-foreground font-bold">{t("No customers yet", "لا يوجد عملاء بعد")}</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -87,12 +89,12 @@ export default function AdminCustomers() {
                   </div>
                   <div className="text-xs text-muted-foreground text-center">
                     <div className="font-bold text-foreground">{c.orders_count}</div>
-                    <div>طلب</div>
+                    <div>{t("orders", "طلب")}</div>
                   </div>
                   {c.total_spent != null && (
                     <div className="text-xs text-muted-foreground text-center">
                       <div className="font-bold text-foreground">${Number(c.total_spent).toLocaleString("en-US")}</div>
-                      <div>إجمالي</div>
+                      <div>{t("total", "إجمالي")}</div>
                     </div>
                   )}
                   {c.phone && (

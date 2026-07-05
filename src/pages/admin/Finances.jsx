@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { TrendingUp, DollarSign, Package, Plus, Trash2, Save } from "lucide-react";
+import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 function money(v, label = "USD") {
   const n = Number(v) || 0;
@@ -13,6 +14,7 @@ function money(v, label = "USD") {
 
 export default function AdminFinances() {
   const { toast } = useToast();
+  const { t, isRTL, dir } = useAdminLanguage();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -41,10 +43,10 @@ export default function AdminFinances() {
         default_cost_ratio: Number(ratio),
         overhead_rows: rows,
       });
-      toast({ title: "تم الحفظ" });
+      toast({ title: t("Saved", "تم الحفظ") });
       load();
     } catch (e) {
-      toast({ title: "تعذّر الحفظ", description: e?.data?.error || e?.message, variant: "destructive" });
+      toast({ title: t("Failed to save", "تعذّر الحفظ"), description: e?.data?.error || e?.message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -52,26 +54,26 @@ export default function AdminFinances() {
 
   const label = data?.currency_label || "USD";
   const cards = data ? [
-    { icon: DollarSign, label: "الإيراد المتوقّع", value: money(data.projected_revenue, label), bg: "bg-teal-50", color: "text-teal-600" },
-    { icon: Package, label: "تكلفة البضاعة المقدّرة", value: money(data.estimated_cogs, label), bg: "bg-orange-50", color: "text-orange-600" },
-    { icon: TrendingUp, label: "الربح الإجمالي المتوقّع", value: money(data.projected_gross_profit, label), bg: "bg-green-50", color: "text-green-600" },
-    { icon: TrendingUp, label: "هامش الربح", value: `${Math.round((data.projected_margin || 0) * 100)}%`, bg: "bg-blue-50", color: "text-blue-600" },
+    { icon: DollarSign, label: t("Projected Revenue", "الإيراد المتوقّع"), value: money(data.projected_revenue, label), bg: "bg-teal-50", color: "text-teal-600" },
+    { icon: Package, label: t("Estimated COGS", "تكلفة البضاعة المقدّرة"), value: money(data.estimated_cogs, label), bg: "bg-orange-50", color: "text-orange-600" },
+    { icon: TrendingUp, label: t("Projected Gross Profit", "الربح الإجمالي المتوقّع"), value: money(data.projected_gross_profit, label), bg: "bg-green-50", color: "text-green-600" },
+    { icon: TrendingUp, label: t("Profit Margin", "هامش الربح"), value: `${Math.round((data.projected_margin || 0) * 100)}%`, bg: "bg-blue-50", color: "text-blue-600" },
   ] : [];
 
   return (
-    <div dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+    <div dir={dir} style={{ fontFamily: "'Cairo', sans-serif" }}>
       <div className="mb-6 flex items-center gap-2">
         <DollarSign className="w-6 h-6 text-amber-600" />
         <div>
-          <h1 className="text-2xl font-black">المالية</h1>
-          <p className="text-sm text-muted-foreground mt-1">الإيراد المتوقّع من المخزون الحالي — للمالك فقط</p>
+          <h1 className="text-2xl font-black">{t("Finances", "المالية")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("Projected revenue from current inventory — owner only", "الإيراد المتوقّع من المخزون الحالي — للمالك فقط")}</p>
         </div>
       </div>
 
       {loading ? (
-        <div className="p-8 text-center text-muted-foreground">جاري التحميل...</div>
+        <div className="p-8 text-center text-muted-foreground">{t("Loading...", "جاري التحميل...")}</div>
       ) : !data ? (
-        <div className="p-8 text-center text-muted-foreground">تعذّر تحميل البيانات</div>
+        <div className="p-8 text-center text-muted-foreground">{t("Failed to load data", "تعذّر تحميل البيانات")}</div>
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -91,16 +93,16 @@ export default function AdminFinances() {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6 text-sm text-muted-foreground">
-            <div>المنتجات الفعّالة: <b className="text-foreground">{data.products_count}</b></div>
-            <div>الوحدات في المخزون: <b className="text-foreground">{data.units_in_stock}</b></div>
-            <div>إجمالي المصاريف: <b className="text-foreground">{money(data.overheads_total, label)}</b></div>
+            <div>{t("Active products:", "المنتجات الفعّالة:")} <b className="text-foreground">{data.products_count}</b></div>
+            <div>{t("Units in stock:", "الوحدات في المخزون:")} <b className="text-foreground">{data.units_in_stock}</b></div>
+            <div>{t("Total overheads:", "إجمالي المصاريف:")} <b className="text-foreground">{money(data.overheads_total, label)}</b></div>
           </div>
 
           <Card className="border-0 shadow-sm">
             <CardContent className="p-4">
-              <h2 className="font-bold mb-3">الإعدادات والمصاريف</h2>
+              <h2 className="font-bold mb-3">{t("Settings & Overheads", "الإعدادات والمصاريف")}</h2>
               <div className="mb-4 flex items-center gap-2">
-                <span className="text-sm">نسبة التكلفة الافتراضية (0–1):</span>
+                <span className="text-sm">{t("Default cost ratio (0–1):", "نسبة التكلفة الافتراضية (0–1):")}</span>
                 <Input
                   type="number" step="0.05" min="0" max="1"
                   value={ratio}
@@ -112,17 +114,17 @@ export default function AdminFinances() {
                 {rows.map((r, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <Input
-                      placeholder="البند" value={r.label}
+                      placeholder={t("Item", "البند")} value={r.label}
                       onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
                       className="flex-1"
                     />
                     <Input
-                      type="number" placeholder="الكمية" value={r.qty} dir="ltr"
+                      type="number" placeholder={t("Qty", "الكمية")} value={r.qty} dir="ltr"
                       onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, qty: e.target.value } : x))}
                       className="w-24"
                     />
                     <Input
-                      type="number" placeholder="السعر" value={r.unit_price} dir="ltr"
+                      type="number" placeholder={t("Price", "السعر")} value={r.unit_price} dir="ltr"
                       onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, unit_price: e.target.value } : x))}
                       className="w-28"
                     />
@@ -134,10 +136,10 @@ export default function AdminFinances() {
               </div>
               <div className="flex gap-2 mt-4">
                 <Button variant="outline" onClick={() => setRows([...rows, { label: "", qty: 0, unit_price: 0 }])}>
-                  <Plus className="w-4 h-4 ml-1" /> إضافة بند
+                  <Plus className={`w-4 h-4 ${isRTL ? "ml-1" : "mr-1"}`} /> {t("Add item", "إضافة بند")}
                 </Button>
                 <Button onClick={save} disabled={saving}>
-                  <Save className="w-4 h-4 ml-1" /> {saving ? "..." : "حفظ"}
+                  <Save className={`w-4 h-4 ${isRTL ? "ml-1" : "mr-1"}`} /> {saving ? "..." : t("Save", "حفظ")}
                 </Button>
               </div>
             </CardContent>
