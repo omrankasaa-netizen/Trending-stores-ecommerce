@@ -16,16 +16,7 @@ import { useToast } from "@/components/ui/use-toast";
 import ProductImagesEditor from "@/components/admin/ProductImagesEditor";
 import { getProductImages } from "@/lib/productImages";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
-
-const CATEGORIES = [
-  { labelAr: "حديقة وري", labelEn: "Garden & Irrigation", value: "garden" },
-  { labelAr: "إلكترونيات", labelEn: "Electronics",         value: "electronics" },
-  { labelAr: "منزل ومطبخ", labelEn: "Home & Kitchen",      value: "home" },
-  { labelAr: "صحة وجمال",  labelEn: "Health & Beauty",     value: "health" },
-  { labelAr: "أطفال وأمومة",labelEn: "Kids & Baby",        value: "kids" },
-  { labelAr: "حيوانات أليفة",labelEn: "Pets",              value: "pets" },
-  { labelAr: "أدوات",       labelEn: "Tools",               value: "tools" },
-];
+import { DEFAULT_CATEGORIES, mergeCategoryOptions } from "@/lib/categories";
 
 const EMPTY = {
   name: "", name_ar: "", short_description: "", short_description_ar: "",
@@ -61,12 +52,19 @@ export default function AdminProducts() {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [categoryOptions, setCategoryOptions] = useState(DEFAULT_CATEGORIES);
   const { toast } = useToast();
   const location = useLocation();
   const { t, lang, isRTL, dir } = useAdminLanguage();
 
   useEffect(() => {
     base44.entities.Product.list("-created_date", 200).then(setProducts).finally(() => setLoading(false));
+    // Pull live categories (including hidden ones) so the dropdown reflects any
+    // category created in the admin Categories section. Merge with the static
+    // defaults so existing products keep their labels; fall back silently.
+    base44.entities.Category.list("display_order", 100)
+      .then(rows => setCategoryOptions(mergeCategoryOptions(rows)))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -255,7 +253,7 @@ export default function AdminProducts() {
   // Print the current (filtered) products as a stock sheet following the admin's
   // selected language/direction. These products have a single stock_quantity
   // (no size/variant model), so the sheet lists stock per product.
-  const catLabel = (v) => { const c = CATEGORIES.find((c) => c.value === v); return c ? t(c.labelEn, c.labelAr) : (v || ""); };
+  const catLabel = (v) => { const c = categoryOptions.find((c) => c.value === v); return c ? t(c.labelEn, c.labelAr) : (v || ""); };
   const productName = (p) => lang === "ar" ? (p.name_ar || p.name) : (p.name || p.name_ar);
   function handlePrint() {
     const headers = [t("Product", "المنتج"), t("Category", "الفئة"), t("Price", "السعر"), t("Stock", "المخزون"), t("Status", "الحالة")];
@@ -311,7 +309,7 @@ export default function AdminProducts() {
             className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white outline-none"
           >
             <option value="all">{t("All Categories", "كل الفئات")}</option>
-            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{t(c.labelEn, c.labelAr)}</option>)}
+            {categoryOptions.map(c => <option key={c.value} value={c.value}>{t(c.labelEn, c.labelAr)}</option>)}
           </select>
           <select
             value={filterStatus}
@@ -427,7 +425,7 @@ export default function AdminProducts() {
                 <Label className="font-bold">{t("Category", "الفئة")}</Label>
                 <Select value={form.category} onValueChange={v => f("category", v)}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{t(c.labelEn, c.labelAr)}</SelectItem>)}</SelectContent>
+                  <SelectContent>{categoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{t(c.labelEn, c.labelAr)}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
