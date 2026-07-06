@@ -107,6 +107,36 @@ export function getProductImages(product) {
   return list;
 }
 
+// Return the optional per-variant (size/color/bundle) images as normalized
+// objects. A variant may hold either an `images` array (preferred, mirrors the
+// product gallery) or a single legacy `image`. Empty when the variant has none,
+// so callers can fall back to the product's default images.
+export function getVariantImages(variant) {
+  if (!variant) return [];
+  const list = [];
+  if (Array.isArray(variant.images)) {
+    for (const entry of variant.images) {
+      const img = normalizeImage(entry);
+      if (img) list.push(img);
+    }
+  } else if (variant.image) {
+    const img = normalizeImage(variant.image);
+    if (img) list.push(img);
+  }
+  return list;
+}
+
+// Merge a selected variant's images in front of the product's default images
+// (deduped by url). When the variant has no image the product defaults are
+// returned unchanged — fully backward compatible.
+export function getImagesForVariant(product, variant) {
+  const base = getProductImages(product);
+  const variantImgs = getVariantImages(variant);
+  if (!variantImgs.length) return base;
+  const seen = new Set(variantImgs.map((i) => i.url));
+  return [...variantImgs, ...base.filter((i) => !seen.has(i.url))];
+}
+
 // Convenience: the primary image url for a product (or a placeholder).
 export function getPrimaryImageUrl(product) {
   const imgs = getProductImages(product);
