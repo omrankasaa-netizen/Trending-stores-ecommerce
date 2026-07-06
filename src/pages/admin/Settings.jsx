@@ -19,6 +19,7 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [markupPct, setMarkupPct] = useState("");
   const { toast } = useToast();
   const { t, dir } = useAdminLanguage();
 
@@ -31,6 +32,10 @@ export default function AdminSettings() {
       SETTINGS_KEYS.forEach(k => { formData[k] = map[k]?.value ?? ""; });
       setForm(formData);
     }).finally(() => setLoading(false));
+    // Hidden price markup lives in the kv store, not SiteSettings.
+    base44.functions.getMarkupConfig().then((cfg) => {
+      setMarkupPct(cfg?.global_pct != null ? String(cfg.global_pct) : "");
+    }).catch(() => {});
   }, []);
 
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
@@ -46,6 +51,10 @@ export default function AdminSettings() {
         setSettings(prev => ({ ...prev, [key]: { id: created.id, value } }));
       }
     }
+    // Persist the hidden global markup (reversible; base prices are never mutated).
+    try {
+      await base44.functions.saveMarkupConfig({ global_pct: markupPct === "" ? 0 : Number(markupPct) });
+    } catch { /* ignore markup save failure — other settings already saved */ }
     toast({ title: t("✅ Settings saved successfully", "✅ تم حفظ الإعدادات بنجاح") });
     setSaving(false);
   };
@@ -159,6 +168,20 @@ export default function AdminSettings() {
               <Input className="mt-1" value={form.admin_emails} onChange={e => f("admin_emails", e.target.value)}
                 style={{ direction: "ltr" }} placeholder="email1@example.com, email2@example.com" />
               <p className="text-xs text-muted-foreground mt-1">{t("You can add multiple addresses separated by commas", "يمكن إضافة أكثر من عنوان مفصولة بفاصلة")}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Hidden Price Markup */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="text-base font-black">{t("Hidden Price Markup", "هامش الربح المخفي")}</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label className="font-bold">{t("Global markup (%)", "نسبة الربح العامة (%)")}</Label>
+              <Input className="mt-1 w-32" type="number" min="0" value={markupPct} onChange={e => setMarkupPct(e.target.value)} placeholder={t("e.g. 10", "مثال: 10")} />
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("A hidden percentage added on top of every product price across the store (listing, product page, cart, checkout). Customers never see it. Base prices are never changed, so set back to 0 to remove it. A per-product override can be set in the product editor.", "نسبة مخفية تُضاف فوق سعر كل منتج في المتجر (القوائم، صفحة المنتج، السلة، الدفع). لا يراها العملاء. الأسعار الأساسية لا تتغير، لذا أعِدها إلى 0 لإلغائها. يمكن تحديد نسبة خاصة لكل منتج من محرر المنتجات.")}
+              </p>
             </div>
           </CardContent>
         </Card>

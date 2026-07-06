@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MessageCircle, ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { getProductImages, getImageFrameStyle, hasCrop, imageSrc } from "@/lib/productImages";
+import { getSizes, getTiers } from "@/lib/pricing";
 
 const WHATSAPP = "96181751841";
 
@@ -39,6 +40,10 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
   const discount = product.compare_at_price && product.compare_at_price > product.price
     ? Math.round((1 - product.price / product.compare_at_price) * 100)
     : null;
+
+  // Products with sizes or quantity offers can't be quick-added from a card —
+  // the shopper must choose a size/offer on the product page first.
+  const hasVariants = getSizes(product).length > 0 || getTiers(product).length > 0;
 
   const outOfStock = Number(product.stock_quantity) <= 0;
 
@@ -188,14 +193,27 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
             {isRTL ? "واتساب" : "WhatsApp"}
           </Button>
           {onAddToCart && (
-            <Button
-              variant="outline"
-              disabled={outOfStock}
-              className="rounded-xl h-10 px-3 border-primary text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
-              onClick={() => onAddToCart(product)}
-            >
-              <ShoppingCart className="w-4 h-4" />
-            </Button>
+            hasVariants ? (
+              <Link to={`/product/${product.id}`} className={outOfStock ? "pointer-events-none" : undefined}>
+                <Button
+                  variant="outline"
+                  disabled={outOfStock}
+                  className="rounded-xl h-10 px-3 border-primary text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
+                  title={isRTL ? "اختر المقاس/العرض" : "Choose size/offer"}
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                </Button>
+              </Link>
+            ) : (
+              <Button
+                variant="outline"
+                disabled={outOfStock}
+                className="rounded-xl h-10 px-3 border-primary text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
+                onClick={() => onAddToCart(product)}
+              >
+                <ShoppingCart className="w-4 h-4" />
+              </Button>
+            )
           )}
         </div>
       </div>

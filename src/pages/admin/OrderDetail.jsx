@@ -84,10 +84,14 @@ export default function OrderDetail() {
 
   const cancelOrder = async () => {
     if (!confirm(t("Are you sure you want to cancel this order?", "هل أنت متأكد من إلغاء هذا الطلب؟"))) return;
-    const updated = await base44.entities.Order.update(order.id, { status: "cancelled" });
-    setOrder(updated);
+    setUpdating(true);
+    // Route cancellation through the server function so inventory is restocked
+    // to the correct size (once — guarded against double-restock).
+    const res = await base44.functions.cancelOrder({ order_id: order.id });
+    setOrder(res?.order || await base44.entities.Order.filter({ id: order.id }).then(([o]) => o));
     notifyStatus(order.id, "cancelled");
     toast({ title: t("Order cancelled", "تم إلغاء الطلب") });
+    setUpdating(false);
   };
 
   const printSlip = () => {
@@ -220,18 +224,28 @@ export default function OrderDetail() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 mb-4">
-              {(order.items || []).map((item, i) => (
+              {(order.items || []).map((item, i) => {
+                const sz = lang === "ar" ? (item.size_label_ar || item.size_label) : (item.size_label || item.size_label_ar);
+                const of = lang === "ar" ? (item.offer_label_ar || item.offer_label) : (item.offer_label || item.offer_label_ar);
+                return (
                 <div key={i} className="flex items-center gap-3">
                   {item.image_url && (
                     <img src={item.image_url} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-sm">{lang === "ar" ? (item.product_name_ar || item.product_name) : (item.product_name || item.product_name_ar)}</div>
-                    <div className="text-xs text-muted-foreground">{t("Quantity", "الكمية")}: {item.quantity}</div>
+                    {(sz || of) && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {sz && <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">{sz}</span>}
+                        {of && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">{of}</span>}
+                      </div>
+                    )}
+                    <div className="text-xs text-muted-foreground mt-0.5">{t("Quantity", "الكمية")}: {item.quantity}</div>
                   </div>
                   <div className="font-black text-primary">{formatPrice(item.price * item.quantity)}</div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <div className="border-t border-gray-100 pt-3 space-y-2 text-sm">
               <div className="flex justify-between">
@@ -239,7 +253,7 @@ export default function OrderDetail() {
                 <span className="font-bold">{formatPrice(order.subtotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">{t("Delivery Fee", "رسوم التوصيل")}</span>
+                <span className="text-muted-foreground">{t("Delivery Fee", "رسوم التوصيل")}{order.free_delivery_applied ? ` (${t("Free", "مجاني")})` : ""}</span>
                 <span className="font-bold">{formatPrice(order.delivery_fee)}</span>
               </div>
               <div className="flex justify-between border-t border-gray-100 pt-2">
