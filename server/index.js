@@ -15,8 +15,12 @@ import {
   getUserFromRequest, publicUser, findUserByEmail, setPassword, changePassword, updateUser,
   issueOtp, verifyOtp as verifyOtpCode,
 } from './auth.js';
-import { invokeFunction, isSuperAdmin, getGlobalMarkupPct, recomputeOrder } from './functions.js';
+import {
+  invokeFunction, isSuperAdmin, getGlobalMarkupPct, recomputeOrder,
+  recordManualStockAdjustments,
+} from './functions.js';
 import { applyMarkup, markupPctForProduct } from '../src/lib/pricing.js';
+import { productContentId, META_CURRENCY } from '../src/lib/metaShared.js';
 import { sendEmail } from './email.js';
 import { runSeed } from './seed.js';
 import { optimizeAndStore, bufferFromBase64 } from './imageOptimize.js';
@@ -316,7 +320,7 @@ function authorizeWrite(op) {
 // and the confirmation/receipt is rendered client-side from the submitted cart —
 // there is no guest order read-back — while customers and logs are admin-only
 // screens. So we require an admin-tier session to list or read any of them.
-const READ_PROTECTED = new Set(['Order', 'Customer', 'EmailLog', 'AuditLog', 'User', 'CustomerAddress']);
+const READ_PROTECTED = new Set(['Order', 'Customer', 'EmailLog', 'AuditLog', 'User', 'CustomerAddress', 'StockMovement']);
 
 function authorizeRead(req, res, next) {
   if (!READ_PROTECTED.has(req.params.entity)) return next();
@@ -410,20 +414,58 @@ app.get('/api/entities/:entity/:id', ensureEntity, authorizeRead, (req, res) => 
   } catch (e) { handleError(res, e); }
 });
 
+// Defensively clamp product stock/price so a bad admin payload can never store a
+// negative stock (which would corrupt the ledger balance) or a negative price.
+// The admin UI validates first; this is the server-side backstop.
+function sanitizeProductWrite(payload) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const out = { ...payload };
+  const clampNonNeg = (v) => {
+    if (v == null || v === '') return v;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return v;
+    return n < 0 ? 0 : n;
+  };
+  if (out.stock_quantity !== undefined) out.stock_quantity = clampNonNeg(out.stock_quantity);
+  if (out.price !== undefined) out.price = clampNonNeg(out.price);
+  if (out.compare_at_price !== undefined) out.compare_at_price = clampNonNeg(out.compare_at_price);
+  if (Array.isArray(out.sizes)) {
+    out.sizes = out.sizes.map((s) => (s && typeof s === 'object'
+      ? { ...s, stock_quantity: clampNonNeg(s.stock_quantity), price: clampNonNeg(s.price) }
+      : s));
+  }
+  return out;
+}
+
+function actorLabel(req) {
+  const u = getUserFromRequest(req);
+  return u?.full_name || u?.email || 'admin';
+}
+
 app.post('/api/entities/:entity', ensureEntity, authorizeWrite('create'), (req, res) => {
   try {
     let payload = req.body || {};
     // Orders: recompute every price server-side (size + tier + markup) and the
     // delivery/total, so a tampered client can never dictate what it pays.
     if (req.params.entity === 'Order') payload = recomputeOrder(payload);
+    if (req.params.entity === 'Product') payload = sanitizeProductWrite(payload);
     const record = createRecord(req.params.entity, payload);
+    // Ledger: initial stock for a new product.
+    if (req.params.entity === 'Product') {
+      recordManualStockAdjustments(null, record, actorLabel(req));
+    }
     res.json(sanitize(req.params.entity, record));
   } catch (e) { handleError(res, e); }
 });
 
 app.put('/api/entities/:entity/:id', ensureEntity, authorizeWrite('update'), (req, res) => {
   try {
-    const record = updateRecord(req.params.entity, req.params.id, req.body || {});
+    const isProduct = req.params.entity === 'Product';
+    const before = isProduct ? getRecord('Product', req.params.id) : null;
+    const patch = isProduct ? sanitizeProductWrite(req.body || {}) : (req.body || {});
+    const record = updateRecord(req.params.entity, req.params.id, patch);
+    // Ledger: log admin stock edits (top-level + per size) as manual_adjust.
+    if (isProduct) recordManualStockAdjustments(before, record, actorLabel(req));
     res.json(sanitize(req.params.entity, record));
   } catch (e) { handleError(res, e); }
 });
@@ -435,6 +477,62 @@ app.delete('/api/entities/:entity/:id', ensureEntity, authorizeWrite('delete'), 
 });
 
 app.use('/uploads', express.static(UPLOAD_DIR));
+
+// ─── Meta product catalog feed (public) ──────────────────────────────────────
+// A standard CSV product feed for Meta Commerce Manager / Advantage+ catalogs.
+// `id` is the normalized (uppercase+trim) product identifier — IDENTICAL to the
+// content_ids sent by the Pixel + CAPI so catalog matching works. Prices are
+// markup-inclusive (what customers actually pay). No auth: catalog feeds must be
+// publicly fetchable by Meta's crawler.
+function csvCell(value) {
+  const s = String(value == null ? '' : value).replace(/"/g, '""');
+  return `"${s}"`;
+}
+
+app.get('/meta-feed.csv', (req, res) => {
+  try {
+    const globalPct = getGlobalMarkupPct();
+    const products = queryRecords('Product', { query: { status: 'active' }, limit: 10000 });
+    const base = `${req.protocol}://${req.get('host')}`;
+    const columns = [
+      'id', 'title', 'description', 'availability', 'condition',
+      'price', 'sale_price', 'link', 'image_link', 'brand',
+    ];
+    const rows = [columns.join(',')];
+    for (const p of products) {
+      const id = productContentId(p);
+      if (!id) continue;
+      const pct = markupPctForProduct(p, globalPct);
+      const sell = applyMarkup(Number(p.price) || 0, pct);
+      const compare = p.compare_at_price != null ? applyMarkup(Number(p.compare_at_price) || 0, pct) : null;
+      // Meta convention: `price` is the regular price, `sale_price` the reduced
+      // one. When a compare-at price is higher, expose it as the regular price.
+      const onSale = compare != null && compare > sell;
+      const regular = onSale ? compare : sell;
+      const salePrice = onSale ? sell : '';
+      const inStock = p.stock_quantity == null || Number(p.stock_quantity) > 0;
+      const title = p.name || p.name_ar || id;
+      const description = p.short_description || p.short_description_ar || title;
+      const image = p.image_url || '';
+      const link = `${base}/product/${p.id}`;
+      rows.push([
+        csvCell(id),
+        csvCell(title),
+        csvCell(description),
+        csvCell(inStock ? 'in stock' : 'out of stock'),
+        csvCell('new'),
+        csvCell(`${regular} ${META_CURRENCY}`),
+        csvCell(salePrice === '' ? '' : `${salePrice} ${META_CURRENCY}`),
+        csvCell(link),
+        csvCell(image),
+        csvCell('Trending Store'),
+      ].join(','));
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="meta-feed.csv"');
+    res.send(rows.join('\n'));
+  } catch (e) { handleError(res, e); }
+});
 
 // ─── Serve SPA with history fallback ──────────────────────────────────────────
 if (fs.existsSync(DIST)) {

@@ -43,8 +43,11 @@ export default function AdminDiscounts() {
   const fmt = formatPrice;
 
   const applyBulkDiscount = async () => {
-    if (!discountValue || Number(discountValue) <= 0 || selectedProducts.length === 0) {
+    if (!discountValue || !Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || selectedProducts.length === 0) {
       toast({ title: t("Select products and enter a discount value greater than zero", "اختر منتجات وأدخل قيمة خصم أكبر من صفر"), variant: "destructive" }); return;
+    }
+    if (discountType === "percent" && Number(discountValue) > 100) {
+      toast({ title: t("Percentage discount cannot exceed 100%", "نسبة الخصم لا يمكن أن تتجاوز 100%"), variant: "destructive" }); return;
     }
     setApplying(true);
     try {
@@ -81,8 +84,11 @@ export default function AdminDiscounts() {
   };
 
   const addCoupon = async () => {
-    if (!couponForm.code || !couponForm.value || Number(couponForm.value) <= 0) {
+    if (!couponForm.code || !couponForm.value || !Number.isFinite(Number(couponForm.value)) || Number(couponForm.value) <= 0) {
       toast({ title: t("Enter a code and a value greater than zero", "أدخل الكود وقيمة أكبر من صفر"), variant: "destructive" }); return;
+    }
+    if (couponForm.type === "percent" && Number(couponForm.value) > 100) {
+      toast({ title: t("Percentage discount cannot exceed 100%", "نسبة الخصم لا يمكن أن تتجاوز 100%"), variant: "destructive" }); return;
     }
     setSavingCoupon(true);
     try {

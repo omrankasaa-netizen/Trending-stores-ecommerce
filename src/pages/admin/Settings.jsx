@@ -41,30 +41,53 @@ export default function AdminSettings() {
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   const saveAll = async () => {
-    setSaving(true);
-    for (const [key, value] of Object.entries(form)) {
-      const existing = settings[key];
-      if (existing?.id) {
-        await base44.entities.SiteSettings.update(existing.id, { value });
-      } else {
-        const created = await base44.entities.SiteSettings.create({ key, value });
-        setSettings(prev => ({ ...prev, [key]: { id: created.id, value } }));
+    // Reject negative / non-numeric delivery fee and markup before saving.
+    if (form.delivery_fee !== "" && form.delivery_fee != null) {
+      const fee = Number(form.delivery_fee);
+      if (!Number.isFinite(fee) || fee < 0) {
+        toast({ title: t("Delivery fee must be a valid number (0 or more)", "رسوم التوصيل يجب أن تكون رقماً صحيحاً (0 أو أكثر)"), variant: "destructive" });
+        return;
       }
     }
-    // Persist the hidden global markup (reversible; base prices are never mutated).
+    if (markupPct !== "" && markupPct != null) {
+      const m = Number(markupPct);
+      if (!Number.isFinite(m) || m < 0) {
+        toast({ title: t("Markup must be a valid percentage (0 or more)", "نسبة الربح يجب أن تكون رقماً صحيحاً (0 أو أكثر)"), variant: "destructive" });
+        return;
+      }
+    }
+    setSaving(true);
     try {
+      for (const [key, value] of Object.entries(form)) {
+        const existing = settings[key];
+        if (existing?.id) {
+          await base44.entities.SiteSettings.update(existing.id, { value });
+        } else {
+          const created = await base44.entities.SiteSettings.create({ key, value });
+          setSettings(prev => ({ ...prev, [key]: { id: created.id, value } }));
+        }
+      }
+      // Persist the hidden global markup (reversible; base prices are never mutated).
       await base44.functions.saveMarkupConfig({ global_pct: markupPct === "" ? 0 : Number(markupPct) });
-    } catch { /* ignore markup save failure — other settings already saved */ }
-    toast({ title: t("✅ Settings saved successfully", "✅ تم حفظ الإعدادات بنجاح") });
-    setSaving(false);
+      toast({ title: t("✅ Settings saved successfully", "✅ تم حفظ الإعدادات بنجاح") });
+    } catch (err) {
+      toast({ title: t("Failed to save settings", "تعذّر حفظ الإعدادات"), description: err?.message || "", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const uploadLogo = async (e) => {
     const file = e.target.files[0]; if (!file) return;
     setUploading(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    f("logo_url", file_url);
-    setUploading(false);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      f("logo_url", file_url);
+    } catch (err) {
+      toast({ title: t("Failed to upload logo", "تعذّر رفع الشعار"), description: err?.message || "", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
   };
 
   if (loading) return <div className="p-8 text-center text-muted-foreground" style={{ fontFamily: "'Cairo', sans-serif" }}>{t("Loading...", "جاري التحميل...")}</div>;

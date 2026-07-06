@@ -25,14 +25,25 @@ export default function AdminInventory() {
   }, []);
 
   const saveQty = async (id) => {
-    const qty = editingQty[id];
-    if (qty === undefined) return;
+    const raw = editingQty[id];
+    if (raw === undefined) return;
+    const qty = Number(raw);
+    // Reject blank/NaN/negative so stock never goes below zero.
+    if (raw === "" || !Number.isFinite(qty) || qty < 0) {
+      toast({ title: t("Enter a valid quantity (0 or more)", "أدخل كمية صحيحة (0 أو أكثر)"), variant: "destructive" });
+      return;
+    }
     setSavingId(id);
-    await base44.entities.Product.update(id, { stock_quantity: Number(qty) });
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, stock_quantity: Number(qty) } : p));
-    setEditingQty(prev => { const n = { ...prev }; delete n[id]; return n; });
-    toast({ title: t("✅ Quantity updated", "✅ تم تحديث الكمية") });
-    setSavingId(null);
+    try {
+      await base44.entities.Product.update(id, { stock_quantity: qty });
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, stock_quantity: qty } : p));
+      setEditingQty(prev => { const n = { ...prev }; delete n[id]; return n; });
+      toast({ title: t("✅ Quantity updated", "✅ تم تحديث الكمية") });
+    } catch (err) {
+      toast({ title: t("Failed to update quantity", "تعذّر تحديث الكمية"), description: err?.message || "", variant: "destructive" });
+    } finally {
+      setSavingId(null);
+    }
   };
 
   const filtered = products.filter(p => {

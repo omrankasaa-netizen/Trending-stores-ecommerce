@@ -27,6 +27,7 @@ import AdminProducts from './pages/admin/Products';
 import AdminOrders from './pages/admin/Orders';
 import OrderDetail from './pages/admin/OrderDetail';
 import AdminInventory from './pages/admin/Inventory';
+import AdminStockHistory from './pages/admin/StockHistory';
 import AdminCategories from './pages/admin/Categories';
 import AdminDiscounts from './pages/admin/Discounts';
 import AdminContent from './pages/admin/Content';
@@ -95,6 +96,7 @@ const AuthenticatedApp = () => {
           <Route path="orders/:id" element={<OrderDetail />} />
           <Route path="products" element={<AdminProducts />} />
           <Route path="inventory" element={<AdminInventory />} />
+          <Route path="stock-history" element={<AdminStockHistory />} />
           <Route path="categories" element={<AdminCategories />} />
           <Route path="discounts" element={<AdminDiscounts />} />
           <Route path="content" element={<AdminContent />} />

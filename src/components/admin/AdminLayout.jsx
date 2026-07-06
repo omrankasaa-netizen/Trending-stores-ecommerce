@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, ShoppingBag, Package, BarChart2, FolderOpen, Home, Settings, Mail, Menu, X, ExternalLink, ChevronRight, Percent, Shield, ScrollText, Users, DollarSign, Languages
+  LayoutDashboard, ShoppingBag, Package, BarChart2, FolderOpen, Home, Settings, Mail, Menu, X, ExternalLink, ChevronRight, Percent, Shield, ScrollText, Users, DollarSign, Languages, History
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ const NAV = [
   { labelEn: "Customers",    labelAr: "العملاء",       path: "/admin/customers",  icon: Users },
   { labelEn: "Products",     labelAr: "المنتجات",      path: "/admin/products",   icon: Package },
   { labelEn: "Inventory",    labelAr: "المخزون",       path: "/admin/inventory",  icon: BarChart2 },
+  { labelEn: "Stock History", labelAr: "سجل المخزون",  path: "/admin/stock-history", icon: History },
   { labelEn: "Categories",   labelAr: "الفئات",        path: "/admin/categories", icon: FolderOpen },
   { labelEn: "Discounts",    labelAr: "العروض",        path: "/admin/discounts",  icon: Percent },
   { labelEn: "Homepage",     labelAr: "المحتوى",       path: "/admin/content",    icon: Home },

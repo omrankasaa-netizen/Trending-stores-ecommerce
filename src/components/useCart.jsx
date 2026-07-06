@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { trackAddToCart } from "@/lib/metaPixel";
 
 const CART_KEY = "ts_cart";
 
@@ -70,6 +71,10 @@ export function useCart() {
         free_shipping: !!opts.free_shipping,
       }]);
     }
+    // Central Meta AddToCart — every add-to-cart path funnels through here, so
+    // it fires once regardless of which page triggered it. No-op without pixel
+    // id / consent.
+    trackAddToCart({ product: { ...product, price: unitPrice }, quantity: qty, value: unitPrice });
   }, [saveCart]);
 
   const removeFromCart = useCallback((key) => {

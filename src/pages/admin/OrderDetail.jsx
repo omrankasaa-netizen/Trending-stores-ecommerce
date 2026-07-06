@@ -75,23 +75,33 @@ export default function OrderDetail() {
     const next = STATUS_CONFIG[order.status]?.next;
     if (!next) return;
     setUpdating(true);
-    const updated = await base44.entities.Order.update(order.id, { status: next });
-    setOrder(updated);
-    notifyStatus(order.id, next);
-    toast({ title: t(`Status updated to: ${STATUS_CONFIG[next]?.labelEn}`, `تم تحديث الحالة إلى: ${STATUS_CONFIG[next]?.labelAr}`) });
-    setUpdating(false);
+    try {
+      const updated = await base44.entities.Order.update(order.id, { status: next });
+      setOrder(updated);
+      notifyStatus(order.id, next);
+      toast({ title: t(`Status updated to: ${STATUS_CONFIG[next]?.labelEn}`, `تم تحديث الحالة إلى: ${STATUS_CONFIG[next]?.labelAr}`) });
+    } catch (err) {
+      toast({ title: t("Failed to update status", "تعذّر تحديث الحالة"), description: err?.message || "", variant: "destructive" });
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const cancelOrder = async () => {
     if (!confirm(t("Are you sure you want to cancel this order?", "هل أنت متأكد من إلغاء هذا الطلب؟"))) return;
     setUpdating(true);
-    // Route cancellation through the server function so inventory is restocked
-    // to the correct size (once — guarded against double-restock).
-    const res = await base44.functions.cancelOrder({ order_id: order.id });
-    setOrder(res?.order || await base44.entities.Order.filter({ id: order.id }).then(([o]) => o));
-    notifyStatus(order.id, "cancelled");
-    toast({ title: t("Order cancelled", "تم إلغاء الطلب") });
-    setUpdating(false);
+    try {
+      // Route cancellation through the server function so inventory is restocked
+      // to the correct size (once — guarded against double-restock).
+      const res = await base44.functions.cancelOrder({ order_id: order.id });
+      setOrder(res?.order || await base44.entities.Order.filter({ id: order.id }).then(([o]) => o));
+      notifyStatus(order.id, "cancelled");
+      toast({ title: t("Order cancelled", "تم إلغاء الطلب") });
+    } catch (err) {
+      toast({ title: t("Failed to cancel order", "تعذّر إلغاء الطلب"), description: err?.message || "", variant: "destructive" });
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const printSlip = () => {

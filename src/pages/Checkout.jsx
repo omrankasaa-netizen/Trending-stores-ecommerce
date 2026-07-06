@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { MessageCircle, CheckCircle2, Truck, ShoppingBag, Tag, MapPin } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { cartHasFreeDelivery } from "@/lib/pricing";
+import { trackInitiateCheckout, trackPurchase, newEventId } from "@/lib/metaPixel";
 
 const WHATSAPP_FALLBACK = "96181751841";
 function genOrderNum() { return "TS-" + Date.now().toString().slice(-6); }
@@ -93,6 +94,13 @@ export default function Checkout() {
 
   const updateForm = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Meta InitiateCheckout — fire once when the checkout page loads with items.
+  // No-op without pixel id / consent.
+  useEffect(() => {
+    if (cart.length > 0) trackInitiateCheckout({ items: cart, value: total });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const applyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
     if (!code) return;
@@ -164,11 +172,20 @@ export default function Checkout() {
       payment_method: "cod",
     });
 
+    // Meta Purchase: fire the browser Pixel event and the server-side CAPI event
+    // with the SAME event_id so Meta deduplicates them into one conversion. The
+    // authoritative purchase value comes from the server-recomputed order. Both
+    // are no-ops when Meta is not configured / consent withheld (browser side).
+    const purchaseEventId = newEventId();
+    const purchaseValue = Number(order?.total ?? total) || 0;
+    trackPurchase({ items: cart, value: purchaseValue, eventId: purchaseEventId });
+
     // Order automation (best-effort — never block the confirmation screen).
     try {
       const orderId = order?.id;
       await Promise.allSettled([
         base44.functions.commitStock({ order_id: orderId }),
+        base44.functions.metaTrackPurchase({ order_id: orderId, event_id: purchaseEventId }),
         base44.functions.sendOrderNotification({ order_id: orderId }),
         orderEmail ? base44.functions.sendOrderConfirmation({ order_id: orderId }) : Promise.resolve(),
         coupon ? base44.entities.Coupon.update(coupon.id, { usage_count: Number(coupon.usage_count || 0) + 1 }) : Promise.resolve(),
