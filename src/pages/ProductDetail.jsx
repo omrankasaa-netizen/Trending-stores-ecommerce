@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatPrice } from "@/lib/utils";
 import { getProductImages, getImageFrameStyle, hasCrop } from "@/lib/productImages";
 import { getSizes, sizeId, findSize, buildOfferOptions } from "@/lib/pricing";
+import { trackViewContent } from "@/lib/metaPixel";
 
 const WHATSAPP = "96181751841";
 
@@ -32,6 +33,7 @@ export default function ProductDetail() {
     base44.entities.Product.filter({ id }).then(([p]) => {
       setProduct(p);
       setLoading(false);
+      if (p) trackViewContent(p, { value: p.price });
       const sizes = getSizes(p);
       if (sizes.length > 0) setSelectedSizeId(sizeId(sizes[0]));
       if (p?.category) {

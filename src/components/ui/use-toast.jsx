@@ -1,8 +1,14 @@
 // Inspired by react-hot-toast library
 import { useState, useEffect } from "react";
 
-const TOAST_LIMIT = 20;
-const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_LIMIT = 3;
+// How long a toast stays visible before it auto-dismisses. Kept short so the
+// add-to-cart confirmation never lingers over the cart drawer / checkout CTA.
+const TOAST_AUTO_DISMISS_DELAY = 3500;
+// Grace period after a toast is dismissed (open:false) before it is removed from
+// the DOM, so the close animation can play. Previously this was 1000000ms, which
+// combined with no auto-dismiss meant toasts effectively never went away.
+const TOAST_REMOVE_DELAY = 400;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -19,6 +25,28 @@ function genId() {
 }
 
 const toastTimeouts = new Map();
+const autoDismissTimeouts = new Map();
+
+// Schedule an automatic dismiss so a toast disappears on its own after a few
+// seconds. Without this the toast stays open forever and — because the viewport
+// is a fixed overlay — traps clicks over whatever it sits above (e.g. the cart
+// drawer's Proceed-to-Checkout button) until a manual refresh.
+const scheduleAutoDismiss = (toastId, delay = TOAST_AUTO_DISMISS_DELAY) => {
+  if (autoDismissTimeouts.has(toastId)) return;
+  const timeout = setTimeout(() => {
+    autoDismissTimeouts.delete(toastId);
+    dispatch({ type: actionTypes.DISMISS_TOAST, toastId });
+  }, delay);
+  autoDismissTimeouts.set(toastId, timeout);
+};
+
+const clearAutoDismiss = (toastId) => {
+  const timeout = autoDismissTimeouts.get(toastId);
+  if (timeout) {
+    clearTimeout(timeout);
+    autoDismissTimeouts.delete(toastId);
+  }
+};
 
 const addToRemoveQueue = (toastId) => {
   if (toastTimeouts.has(toastId)) {
@@ -47,6 +75,7 @@ const _clearFromRemoveQueue = (toastId) => {
 export const reducer = (state, action) => {
   switch (action.type) {
     case actionTypes.ADD_TOAST:
+      scheduleAutoDismiss(action.toast.id, action.toast.duration);
       return {
         ...state,
         toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
@@ -66,9 +95,11 @@ export const reducer = (state, action) => {
       // ! Side effects ! - This could be extracted into a dismissToast() action,
       // but I'll keep it here for simplicity
       if (toastId) {
+        clearAutoDismiss(toastId);
         addToRemoveQueue(toastId);
       } else {
         state.toasts.forEach((toast) => {
+          clearAutoDismiss(toast.id);
           addToRemoveQueue(toast.id);
         });
       }

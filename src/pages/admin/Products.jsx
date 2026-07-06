@@ -130,8 +130,40 @@ export default function AdminProducts() {
   const updateTier = (i, k, v) => setForm(prev => ({ ...prev, tiers: (prev.tiers || []).map((tr, idx) => idx === i ? { ...tr, [k]: v } : tr) }));
   const removeTier = (i) => setForm(prev => ({ ...prev, tiers: (prev.tiers || []).filter((_, idx) => idx !== i) }));
 
+  // Reject negatives / NaN on every numeric field before saving. Returns a
+  // bilingual error string, or null when the form is valid.
+  const validateForm = () => {
+    if (!form.name_ar || !form.name) return t("Please enter the product name (Arabic & English)", "يرجى إدخال اسم المنتج (عربي وإنجليزي)");
+    const price = Number(form.price);
+    if (form.price === "" || !Number.isFinite(price) || price < 0) return t("Enter a valid price (0 or more)", "أدخل سعراً صحيحاً (0 أو أكثر)");
+    if (form.compare_at_price !== "" && form.compare_at_price != null) {
+      const c = Number(form.compare_at_price);
+      if (!Number.isFinite(c) || c < 0) return t("Old price must be a valid number (0 or more)", "السعر القديم يجب أن يكون رقماً صحيحاً (0 أو أكثر)");
+    }
+    if (form.stock_quantity !== "" && form.stock_quantity != null) {
+      const s = Number(form.stock_quantity);
+      if (!Number.isFinite(s) || s < 0) return t("Stock must be a valid number (0 or more)", "المخزون يجب أن يكون رقماً صحيحاً (0 أو أكثر)");
+    }
+    if (form.markup_pct !== "" && form.markup_pct != null) {
+      const m = Number(form.markup_pct);
+      if (!Number.isFinite(m) || m < 0) return t("Markup must be a valid percentage (0 or more)", "نسبة الربح يجب أن تكون رقماً صحيحاً (0 أو أكثر)");
+    }
+    for (const s of (Array.isArray(form.sizes) ? form.sizes : [])) {
+      if (!(s.label || s.label_ar)) continue;
+      if (s.price !== "" && s.price != null && (!Number.isFinite(Number(s.price)) || Number(s.price) < 0)) return t("Size price must be 0 or more", "سعر المقاس يجب أن يكون 0 أو أكثر");
+      if (s.stock_quantity !== "" && s.stock_quantity != null && (!Number.isFinite(Number(s.stock_quantity)) || Number(s.stock_quantity) < 0)) return t("Size stock must be 0 or more", "مخزون المقاس يجب أن يكون 0 أو أكثر");
+    }
+    for (const tr of (Array.isArray(form.tiers) ? form.tiers : [])) {
+      if (tr.min_quantity === "" || tr.min_quantity == null) continue;
+      if (!Number.isFinite(Number(tr.min_quantity)) || Number(tr.min_quantity) <= 0) return t("Offer quantity must be greater than 0", "كمية العرض يجب أن تكون أكبر من 0");
+      if (tr.total_price !== "" && tr.total_price != null && (!Number.isFinite(Number(tr.total_price)) || Number(tr.total_price) < 0)) return t("Offer total price must be 0 or more", "سعر العرض يجب أن يكون 0 أو أكثر");
+    }
+    return null;
+  };
+
   const save = async (addAnother = false) => {
-    if (!form.name || !form.price) { toast({ title: t("Please enter the name and price", "يرجى إدخال الاسم والسعر"), variant: "destructive" }); return; }
+    const validationError = validateForm();
+    if (validationError) { toast({ title: validationError, variant: "destructive" }); return; }
     setSaving(true);
     const images = Array.isArray(form.images) ? form.images.filter((i) => i && i.url) : [];
     // Normalize size rows: keep only rows with a label, coerce price/stock to numbers.
@@ -168,34 +200,48 @@ export default function AdminProducts() {
       // Per-product markup override: empty → null (fall back to global markup).
       markup_pct: form.markup_pct !== "" && form.markup_pct != null ? Number(form.markup_pct) : null,
     };
-    if (editing) {
-      const updated = await base44.entities.Product.update(editing.id, data);
-      setProducts(prev => prev.map(p => p.id === editing.id ? updated : p));
-      toast({ title: t("✅ Product updated successfully!", "✅ تم تحديث المنتج بنجاح!") });
-    } else {
-      const created = await base44.entities.Product.create(data);
-      setProducts(prev => [created, ...prev]);
-      toast({ title: t("✅ Product added successfully!", "✅ تم إضافة المنتج بنجاح!") });
+    try {
+      if (editing) {
+        const updated = await base44.entities.Product.update(editing.id, data);
+        setProducts(prev => prev.map(p => p.id === editing.id ? updated : p));
+        toast({ title: t("✅ Product updated successfully!", "✅ تم تحديث المنتج بنجاح!") });
+      } else {
+        const created = await base44.entities.Product.create(data);
+        setProducts(prev => [created, ...prev]);
+        toast({ title: t("✅ Product added successfully!", "✅ تم إضافة المنتج بنجاح!") });
+      }
+      if (addAnother) { setForm(EMPTY); setEditing(null); }
+      else setOpen(false);
+    } catch (err) {
+      toast({ title: t("Failed to save product", "تعذّر حفظ المنتج"), description: err?.message || "", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    if (addAnother) { setForm(EMPTY); setEditing(null); }
-    else setOpen(false);
   };
 
   const deleteProduct = async (id) => {
     if (!confirm(t("Are you sure you want to delete this product?", "هل أنت متأكد من حذف هذا المنتج؟"))) return;
-    await base44.entities.Product.delete(id);
-    setProducts(prev => prev.filter(p => p.id !== id));
-    toast({ title: t("Product deleted", "تم حذف المنتج") });
+    try {
+      await base44.entities.Product.delete(id);
+      setProducts(prev => prev.filter(p => p.id !== id));
+      toast({ title: t("Product deleted", "تم حذف المنتج") });
+    } catch (err) {
+      toast({ title: t("Failed to delete product", "تعذّر حذف المنتج"), description: err?.message || "", variant: "destructive" });
+    }
   };
 
   const uploadVideo = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setUploadingVideo(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    f("video_url", file_url);
-    setUploadingVideo(false);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      f("video_url", file_url);
+    } catch (err) {
+      toast({ title: t("Failed to upload video", "تعذّر رفع الفيديو"), description: err?.message || "", variant: "destructive" });
+    } finally {
+      setUploadingVideo(false);
+    }
   };
 
   const filtered = products.filter(p => {

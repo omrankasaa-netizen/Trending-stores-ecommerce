@@ -59,6 +59,9 @@ export const ENTITIES = [
   // writes go exclusively through the ownership-gated account functions; the
   // generic CRUD surface keeps it admin-only (see READ_PROTECTED / PUBLIC_WRITES).
   'CustomerAddress',
+  // Append-only inventory ledger: one doc per stock change (sale, cancel_restock,
+  // manual_adjust, initial). Admin-read-only audit log; never mutated in place.
+  'StockMovement',
 ];
 
 function tableFor(entity) {

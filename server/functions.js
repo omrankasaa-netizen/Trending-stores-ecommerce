@@ -1,7 +1,9 @@
 import { getRecord, createRecord, updateRecord, deleteRecord, queryRecords, nowIso, kvGet, kvSet } from './db.js';
 import { sendEmail } from './email.js';
+import { sendCapiPurchase, isCapiConfigured } from './meta.js';
 import {
   resolveLineItem, decrementStockPatch, restockStockPatch,
+  getSizes, sizeId,
 } from '../src/lib/pricing.js';
 
 // ─── Brand / email constants ────────────────────────────────────────────────
@@ -179,6 +181,93 @@ export function recomputeOrder(orderData = {}) {
   };
 }
 
+// ─── Stock movement ledger (append-only audit log) ───────────────────────────
+// Every stock change writes one immutable StockMovement doc. Reads are admin-only
+// (see READ_PROTECTED in server/index.js). Reasons: 'sale' (commitStock),
+// 'cancel_restock' (cancelOrder), 'manual_adjust' / 'initial' (admin product
+// create/edit). Never mutated in place, so it is a trustworthy audit trail.
+function ledgerNum(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function recordStockMovement({
+  product, product_id, product_name, product_name_ar,
+  size_id = '', size_label = '', size_label_ar = '',
+  delta, balance = null, reason, reference = '', actor = '',
+}) {
+  const d = Number(delta) || 0;
+  if (!d && reason === 'initial') return; // don't log a no-op initial (0 stock)
+  const pid = product_id || product?.id || '';
+  try {
+    createRecord('StockMovement', {
+      product_id: pid,
+      product_name: product_name || product?.name || '',
+      product_name_ar: product_name_ar || product?.name_ar || '',
+      size_id: size_id || '',
+      size_label: size_label || '',
+      size_label_ar: size_label_ar || '',
+      delta: d,
+      balance: balance == null ? null : Number(balance),
+      reason: reason || 'manual_adjust',
+      reference: reference || '',
+      actor: actor || '',
+      at: nowIso(),
+    });
+  } catch (e) {
+    console.error('[stock_movement] failed to record:', e?.message);
+  }
+}
+
+// Resulting balance for the targeted pool, read from a decrement/restock patch.
+function balanceFromStockPatch(patch, sizeKey) {
+  if (!patch) return null;
+  if (patch.stock_quantity != null) return patch.stock_quantity;
+  if (Array.isArray(patch.sizes)) {
+    const s = patch.sizes.find((x) => sizeId(x) === String(sizeKey ?? ''));
+    if (s && s.stock_quantity != null) return s.stock_quantity;
+  }
+  return null;
+}
+
+// Diff a product's stock (top-level + per size) before/after a manual admin
+// write and append a ledger entry per changed pool. `before` null → a create,
+// logged as 'initial'. No change → nothing logged (so it never double-counts a
+// sale/restock, which never flow through the HTTP product write path).
+export function recordManualStockAdjustments(before, after, actor = 'admin') {
+  if (!after) return;
+  const isCreate = !before;
+  const reasonFor = () => (isCreate ? 'initial' : 'manual_adjust');
+
+  const beforeTop = ledgerNum(before?.stock_quantity);
+  const afterTop = ledgerNum(after?.stock_quantity);
+  if (afterTop != null && afterTop !== beforeTop) {
+    recordStockMovement({
+      product: after, product_id: after.id,
+      delta: afterTop - (beforeTop || 0), balance: afterTop,
+      reason: reasonFor(), reference: actor, actor,
+    });
+  }
+
+  const beforeSizes = getSizes(before || {});
+  for (const s of getSizes(after)) {
+    const sid = sizeId(s);
+    const prev = beforeSizes.find((x) => sizeId(x) === sid);
+    const a = ledgerNum(s.stock_quantity);
+    const b = ledgerNum(prev?.stock_quantity);
+    if (a != null && a !== b) {
+      recordStockMovement({
+        product: after, product_id: after.id,
+        size_id: sid, size_label: s.label || '', size_label_ar: s.label_ar || '',
+        delta: a - (b || 0), balance: a,
+        reason: prev ? reasonFor() : (isCreate ? 'initial' : 'manual_adjust'),
+        reference: actor, actor,
+      });
+    }
+  }
+}
+
 // ─── Stock decrement on order ───────────────────────────────────────────────
 // Decrement stock for each line of an order, drawing down the SELECTED SIZE's
 // pool when the line targets a size (else the product's top-level stock).
@@ -193,8 +282,17 @@ function commitStock({ order_id }) {
     if (!pid) continue;
     const product = getRecord('Product', pid);
     if (!product) continue;
+    const qty = Math.max(1, Number(item.quantity) || 1);
     const patch = decrementStockPatch(product, item.size_id, item.quantity || 1);
-    if (patch) updateRecord('Product', pid, patch);
+    if (patch) {
+      updateRecord('Product', pid, patch);
+      recordStockMovement({
+        product, product_id: pid,
+        size_id: item.size_id || '', size_label: item.size_label || '', size_label_ar: item.size_label_ar || '',
+        delta: -qty, balance: balanceFromStockPatch(patch, item.size_id),
+        reason: 'sale', reference: order.order_number || order_id,
+      });
+    }
   }
   updateRecord('Order', order_id, { stock_committed: true });
   return { ok: true };
@@ -217,8 +315,17 @@ function cancelOrder({ order_id }) {
       if (!pid) continue;
       const product = getRecord('Product', pid);
       if (!product) continue;
+      const qty = Math.max(1, Number(item.quantity) || 1);
       const patch = restockStockPatch(product, item.size_id, item.quantity || 1);
-      if (patch) updateRecord('Product', pid, patch);
+      if (patch) {
+        updateRecord('Product', pid, patch);
+        recordStockMovement({
+          product, product_id: pid,
+          size_id: item.size_id || '', size_label: item.size_label || '', size_label_ar: item.size_label_ar || '',
+          delta: qty, balance: balanceFromStockPatch(patch, item.size_id),
+          reason: 'cancel_restock', reference: order.order_number || order_id,
+        });
+      }
     }
     restocked = true;
   }
@@ -762,9 +869,29 @@ function deleteMyAddress(body, user) {
   return { ok: true, id };
 }
 
+// ─── Meta Conversions API — authoritative server-side Purchase ───────────────
+// Sends one server Purchase event per order via CAPI, sharing the browser
+// Pixel's event_id for deduplication. Idempotent: order.meta_purchase_sent
+// guards against a second send if checkout retries. Silent no-op when Meta env
+// vars are unset. Public because it is triggered by the (guest) checkout flow.
+async function metaTrackPurchase({ order_id, event_id }) {
+  if (!order_id) return { _status: 400, error: 'order_id required' };
+  if (!isCapiConfigured()) return { ok: true, skipped: true, reason: 'not_configured' };
+  const order = getRecord('Order', order_id);
+  if (!order) return { _status: 404, error: 'Order not found' };
+  if (order.meta_purchase_sent) return { ok: true, already_sent: true };
+
+  const result = await sendCapiPurchase({ order, eventId: event_id });
+  // Only mark as sent when Meta actually accepted the event, so a transient
+  // failure can be retried without permanently dropping the conversion.
+  if (result?.ok) updateRecord('Order', order_id, { meta_purchase_sent: true });
+  return result;
+}
+
 const REGISTRY = {
   commitStock,
   cancelOrder,
+  metaTrackPurchase,
   getMarkupConfig,
   saveMarkupConfig,
   getMyOrders,
@@ -798,6 +925,7 @@ const REGISTRY = {
 // Unlisted functions default to 'admin' (fail-safe, never 'public').
 const GUARDS = {
   commitStock: 'public',
+  metaTrackPurchase: 'public',
   cancelOrder: 'admin',
   getMarkupConfig: 'admin',
   saveMarkupConfig: 'admin',
