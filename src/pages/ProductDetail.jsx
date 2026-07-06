@@ -10,6 +10,7 @@ import { MessageCircle, ShoppingCart, Truck, Shield, RotateCcw, ChevronRight, Pl
 import { useToast } from "@/components/ui/use-toast";
 import { formatPrice } from "@/lib/utils";
 import { getProductImages, getImageFrameStyle, hasCrop } from "@/lib/productImages";
+import { getSizes, sizeId, findSize, buildOfferOptions } from "@/lib/pricing";
 
 const WHATSAPP = "96181751841";
 
@@ -24,11 +25,15 @@ export default function ProductDetail() {
   const [showVideo, setShowVideo] = useState(false);
   const [related, setRelated] = useState([]);
   const [activeImg, setActiveImg] = useState(0);
+  const [selectedSizeId, setSelectedSizeId] = useState("");
+  const [selectedOfferKey, setSelectedOfferKey] = useState("single");
 
   useEffect(() => {
     base44.entities.Product.filter({ id }).then(([p]) => {
       setProduct(p);
       setLoading(false);
+      const sizes = getSizes(p);
+      if (sizes.length > 0) setSelectedSizeId(sizeId(sizes[0]));
       if (p?.category) {
         base44.entities.Product.filter({ category: p.category, status: "active" }, "-created_date", 5)
           .then(items => setRelated(items.filter(i => i.id !== p.id).slice(0, 4)));
@@ -52,19 +57,57 @@ export default function ProductDetail() {
 
   const name = isRTL ? (product.name_ar || product.name) : product.name;
   const desc = isRTL ? (product.short_description_ar || product.short_description) : product.short_description;
-  const discount = product.compare_at_price && product.compare_at_price > product.price
-    ? Math.round((1 - product.price / product.compare_at_price) * 100) : null;
-  const outOfStock = Number(product.stock_quantity) <= 0;
+
+  // Sizes & offers. Prices from the API are already markup-inclusive for the
+  // storefront reader, so we resolve options with the default (0%) global pct to
+  // avoid double-applying markup client-side.
+  const sizes = getSizes(product);
+  const selectedSize = sizes.length ? (findSize(product, selectedSizeId) || sizes[0]) : null;
+  const offerOptions = buildOfferOptions(product, selectedSize);
+  const selectedOffer = offerOptions.find((o) => o.key === selectedOfferKey) || offerOptions[0];
+  const isBundle = selectedOffer.min_quantity > 1;
+
+  // Effective purchased quantity: a bundle offer fixes the quantity; single unit
+  // uses the qty stepper.
+  const effectiveQty = isBundle ? selectedOffer.min_quantity : qty;
+  const lineTotal = isBundle ? selectedOffer.total_price : selectedOffer.unit_price * qty;
+  const perUnit = selectedOffer.unit_price;
+
+  // Stock for the currently selected size (falls back to product-level stock).
+  const selectedStock = selectedSize && selectedSize.stock_quantity != null
+    ? Number(selectedSize.stock_quantity)
+    : Number(product.stock_quantity);
+  const outOfStock = Number.isFinite(selectedStock) ? selectedStock <= 0 : false;
+
+  const basePrice = selectedSize && selectedSize.price != null ? Number(selectedSize.price) : Number(product.price);
+  const discount = product.compare_at_price && product.compare_at_price > basePrice
+    ? Math.round((1 - basePrice / product.compare_at_price) * 100) : null;
 
   const images = getProductImages(product);
   const activeImage = images[Math.min(activeImg, Math.max(0, images.length - 1))] || null;
 
   const whatsappMsg = isRTL
-    ? `مرحبا، أريد الطلب: ${name} (الكمية: ${qty}) - السعر: ${formatPrice(product.price * qty)}`
-    : `Hi, I want to order: ${name} (Qty: ${qty}) - Price: ${formatPrice(product.price * qty)}`;
+    ? `مرحبا، أريد الطلب: ${name} (الكمية: ${effectiveQty}) - السعر: ${formatPrice(lineTotal)}`
+    : `Hi, I want to order: ${name} (Qty: ${effectiveQty}) - Price: ${formatPrice(lineTotal)}`;
+
+  const buildOpts = () => ({
+    size_id: selectedSize ? sizeId(selectedSize) : "",
+    size_label: selectedSize?.label || "",
+    size_label_ar: selectedSize?.label_ar || "",
+    offer_min_quantity: isBundle ? selectedOffer.min_quantity : "",
+    offer_label: isBundle ? (selectedOffer.label || `${selectedOffer.min_quantity} pcs`) : "",
+    offer_label_ar: isBundle ? (selectedOffer.label_ar || `${selectedOffer.min_quantity} قطع`) : "",
+    unit_price: perUnit,
+    free_delivery: !!product.free_delivery,
+    free_shipping: !!selectedOffer.free_shipping,
+  });
 
   const handleAddToCart = () => {
-    for (let i = 0; i < qty; i++) addToCart(product, 1);
+    if (isBundle) {
+      addToCart(product, 1, buildOpts());
+    } else {
+      addToCart(product, qty, buildOpts());
+    }
     toast({ title: t("Added to cart!", "تمت الإضافة للسلة!"), description: name });
   };
 
@@ -168,13 +211,24 @@ export default function ProductDetail() {
             </div>
 
             {/* Price */}
-            <div className="flex items-baseline gap-4">
-              <span className="text-4xl font-black text-foreground">{formatPrice(product.price)}</span>
-              {product.compare_at_price && (
+            <div className="flex items-baseline gap-4 flex-wrap">
+              <span className="text-4xl font-black text-foreground">{formatPrice(lineTotal)}</span>
+              {product.compare_at_price && product.compare_at_price > basePrice && (
                 <span className="text-xl text-muted-foreground line-through">{formatPrice(product.compare_at_price)}</span>
               )}
               {discount && <span className="text-red-500 font-bold text-lg">{t(`Save ${discount}%`, `وفر ${discount}%`)}</span>}
             </div>
+            {isBundle && (
+              <p className="text-sm text-muted-foreground -mt-3" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                {t(`${formatPrice(perUnit)} per piece`, `${formatPrice(perUnit)} للقطعة`)}
+              </p>
+            )}
+            {(product.free_delivery || selectedOffer.free_shipping) && (
+              <span className="inline-flex items-center gap-1.5 self-start text-xs font-bold bg-green-100 text-green-700 px-3 py-1.5 rounded-full -mt-2" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                <Truck className="w-3.5 h-3.5" />
+                {t("Free delivery on this item", "توصيل مجاني لهذا المنتج")}
+              </span>
+            )}
 
             {outOfStock && (
               <div className="px-4 py-3 rounded-2xl bg-red-50 border border-red-200 text-red-600 font-bold text-sm" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
@@ -184,21 +238,86 @@ export default function ProductDetail() {
 
             <Separator />
 
-            {/* Qty */}
-            <div>
-              <p className="text-sm font-semibold text-muted-foreground mb-3" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                {t("Quantity", "الكمية")}
-              </p>
-              <div className="flex items-center gap-3">
-                <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => Math.max(1, q - 1))}>
-                  <Minus className="w-4 h-4" />
-                </Button>
-                <span className="text-xl font-black w-8 text-center">{qty}</span>
-                <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => q + 1)}>
-                  <Plus className="w-4 h-4" />
-                </Button>
+            {/* Size selector */}
+            {sizes.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-muted-foreground mb-3" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                  {t("Size", "المقاس")}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {sizes.map((s) => {
+                    const sid = sizeId(s);
+                    const label = isRTL ? (s.label_ar || s.label) : (s.label || s.label_ar);
+                    const soldOut = s.stock_quantity != null && Number(s.stock_quantity) <= 0;
+                    const active = sid === (selectedSize ? sizeId(selectedSize) : "");
+                    return (
+                      <button
+                        key={sid}
+                        disabled={soldOut}
+                        onClick={() => { setSelectedSizeId(sid); setSelectedOfferKey("single"); }}
+                        className={`px-4 h-11 rounded-xl border-2 font-bold text-sm transition-colors ${active ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary"} ${soldOut ? "opacity-40 line-through cursor-not-allowed" : ""}`}
+                        style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Offer / bundle selector */}
+            {offerOptions.length > 1 && (
+              <div>
+                <p className="text-sm font-semibold text-muted-foreground mb-3" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                  {t("Choose an offer", "اختر العرض")}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {offerOptions.map((o) => {
+                    const active = o.key === selectedOfferKey;
+                    const custom = isRTL ? o.label_ar : o.label;
+                    const qtyLabel = o.min_quantity > 1
+                      ? t(`${o.min_quantity} pcs`, `${o.min_quantity} قطع`)
+                      : t("1 pc", "قطعة واحدة");
+                    return (
+                      <button
+                        key={o.key}
+                        onClick={() => setSelectedOfferKey(o.key)}
+                        className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 text-sm font-bold transition-colors ${active ? "border-primary bg-primary/5" : "border-border hover:border-primary"}`}
+                        style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}
+                      >
+                        <span className="flex items-center gap-2">
+                          {custom || qtyLabel}
+                          {o.free_shipping && <span className="text-[11px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">{t("Free delivery", "توصيل مجاني")}</span>}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-primary">{formatPrice(o.total_price)}</span>
+                          {o.min_quantity > 1 && <span className="text-xs text-muted-foreground">({formatPrice(o.unit_price)}{t("/pc", "/قطعة")})</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Qty (only for single-unit purchases) */}
+            {!isBundle && (
+              <div>
+                <p className="text-sm font-semibold text-muted-foreground mb-3" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                  {t("Quantity", "الكمية")}
+                </p>
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => Math.max(1, q - 1))}>
+                    <Minus className="w-4 h-4" />
+                  </Button>
+                  <span className="text-xl font-black w-8 text-center">{qty}</span>
+                  <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => q + 1)}>
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* CTAs */}
             <div className="flex flex-col gap-3">

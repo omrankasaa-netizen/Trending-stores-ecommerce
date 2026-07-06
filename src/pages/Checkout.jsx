@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { MessageCircle, CheckCircle2, Truck, ShoppingBag, Tag, MapPin } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { cartHasFreeDelivery } from "@/lib/pricing";
 
 const WHATSAPP_FALLBACK = "96181751841";
 function genOrderNum() { return "TS-" + Date.now().toString().slice(-6); }
@@ -83,7 +84,10 @@ export default function Checkout() {
   const [checkingCoupon, setCheckingCoupon] = useState(false);
 
   const WHATSAPP = whatsappNumber || WHATSAPP_FALLBACK;
-  const deliveryFee = subtotal > 0 ? settingsDelivery : 0;
+  // Any free-delivery item (product flag or bundle offer) waives the fee. The
+  // server re-derives this authoritatively; this keeps the displayed total in sync.
+  const freeDelivery = cartHasFreeDelivery(cart);
+  const deliveryFee = subtotal > 0 && !freeDelivery ? settingsDelivery : 0;
   const discount = couponDiscount(coupon, subtotal);
   const total = Math.max(0, subtotal - discount) + deliveryFee;
 
@@ -120,7 +124,13 @@ export default function Checkout() {
   };
 
   const buildWhatsAppMessage = (oNum) => {
-    const lines = cart.map(i => `• ${isRTL ? i.product_name_ar : i.product_name} x${i.quantity} = ${formatPrice(i.price * i.quantity)}`);
+    const lines = cart.map(i => {
+      const nm = isRTL ? (i.product_name_ar || i.product_name) : i.product_name;
+      const sz = isRTL ? (i.size_label_ar || i.size_label) : (i.size_label || i.size_label_ar);
+      const of = isRTL ? (i.offer_label_ar || i.offer_label) : (i.offer_label || i.offer_label_ar);
+      const extra = [sz, of].filter(Boolean).join(" · ");
+      return `• ${nm}${extra ? ` (${extra})` : ""} x${i.quantity} = ${formatPrice(i.price * i.quantity)}`;
+    });
     const msg = isRTL
       ? `🛒 طلب جديد #${oNum}\nالاسم: ${form.name}\nالهاتف: ${form.phone}\nالعنوان: ${form.city}, ${form.address}\n\nالمنتجات:\n${lines.join("\n")}\n\nالمجموع: ${formatPrice(total)}\nالدفع: عند الاستلام`
       : `🛒 New Order #${oNum}\nName: ${form.name}\nPhone: ${form.phone}\nAddress: ${form.city}, ${form.address}\n\nItems:\n${lines.join("\n")}\n\nTotal: ${formatPrice(total)}\nPayment: Cash on Delivery`;
@@ -322,16 +332,26 @@ export default function Checkout() {
               {t("Order Summary", "ملخص الطلب")}
             </h2>
             <div className="flex flex-col gap-3 mb-4">
-              {cart.map(item => (
-                <div key={item.product_id} className="flex gap-3 items-center">
+              {cart.map(item => {
+                const sz = isRTL ? (item.size_label_ar || item.size_label) : (item.size_label || item.size_label_ar);
+                const of = isRTL ? (item.offer_label_ar || item.offer_label) : (item.offer_label || item.offer_label_ar);
+                return (
+                <div key={item.cart_key || item.product_id} className="flex gap-3 items-center">
                   <img src={item.image_url} alt="" className="w-14 h-14 object-cover rounded-xl bg-muted flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold line-clamp-2" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{isRTL ? item.product_name_ar : item.product_name}</p>
-                    <p className="text-xs text-muted-foreground">x{item.quantity}</p>
+                    {(sz || of) && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {sz && <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">{sz}</span>}
+                        {of && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">{of}</span>}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">x{item.quantity}</p>
                   </div>
                   <span className="font-bold text-sm flex-shrink-0">{formatPrice(item.price * item.quantity)}</span>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <Separator className="my-4" />
 
@@ -360,7 +380,7 @@ export default function Checkout() {
               {discount > 0 && (
                 <div className="flex justify-between text-red-500 font-medium"><span>{t("Discount", "الخصم")} ({coupon?.code})</span><span>-{formatPrice(discount)}</span></div>
               )}
-              <div className="flex justify-between"><span className="text-muted-foreground">{t("Delivery", "التوصيل")}</span><span className="text-green-600 font-medium">{formatPrice(deliveryFee)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">{t("Delivery", "التوصيل")}</span><span className="text-green-600 font-medium">{freeDelivery && subtotal > 0 ? t("Free", "مجاني") : formatPrice(deliveryFee)}</span></div>
             </div>
             <Separator className="my-3" />
             <div className="flex justify-between font-black text-lg" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>

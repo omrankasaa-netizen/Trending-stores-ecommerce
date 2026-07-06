@@ -66,8 +66,13 @@ export default function CartDrawer({ open, onClose, cart, updateQty, removeFromC
         ) : (
           <>
             <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
-              {cart.map((item) => (
-                <div key={item.product_id} className="flex gap-4 items-start">
+              {cart.map((item) => {
+                const key = item.cart_key || item.product_id;
+                const sizeLabel = isRTL ? (item.size_label_ar || item.size_label) : (item.size_label || item.size_label_ar);
+                const offerLabel = isRTL ? (item.offer_label_ar || item.offer_label) : (item.offer_label || item.offer_label_ar);
+                const isOffer = item.offer_min_quantity != null && item.offer_min_quantity !== "";
+                return (
+                <div key={key} className="flex gap-4 items-start">
                   <img
                     src={item.image_url || "https://placehold.co/80x80"}
                     alt={isRTL ? item.product_name_ar : item.product_name}
@@ -77,22 +82,30 @@ export default function CartDrawer({ open, onClose, cart, updateQty, removeFromC
                     <p className="font-semibold text-sm text-foreground line-clamp-2" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                       {isRTL ? item.product_name_ar : item.product_name}
                     </p>
+                    {(sizeLabel || offerLabel || item.free_delivery || item.free_shipping) && (
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {sizeLabel && <span className="text-[11px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">{sizeLabel}</span>}
+                        {offerLabel && <span className="text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">{offerLabel}</span>}
+                        {(item.free_delivery || item.free_shipping) && <span className="text-[11px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">{t("Free delivery", "توصيل مجاني")}</span>}
+                      </div>
+                    )}
                     <p className="text-primary font-bold mt-1">{formatPrice(item.price)}</p>
                     <div className="flex items-center gap-2 mt-2">
-                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg" onClick={() => updateQty(item.product_id, item.quantity - 1)}>
+                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg" disabled={isOffer} onClick={() => updateQty(key, item.quantity - 1)}>
                         <Minus className="w-3 h-3" />
                       </Button>
                       <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
-                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg" onClick={() => updateQty(item.product_id, item.quantity + 1)}>
+                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg" disabled={isOffer} onClick={() => updateQty(key, item.quantity + 1)}>
                         <Plus className="w-3 h-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive ml-auto" onClick={() => removeFromCart(item.product_id)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive ml-auto" onClick={() => removeFromCart(key)}>
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="border-t border-border px-6 py-5 flex flex-col gap-3 bg-muted/30">

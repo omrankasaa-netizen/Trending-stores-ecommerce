@@ -15,7 +15,8 @@ import {
   getUserFromRequest, publicUser, findUserByEmail, setPassword, changePassword, updateUser,
   issueOtp, verifyOtp as verifyOtpCode,
 } from './auth.js';
-import { invokeFunction, isSuperAdmin } from './functions.js';
+import { invokeFunction, isSuperAdmin, getGlobalMarkupPct, recomputeOrder } from './functions.js';
+import { applyMarkup, markupPctForProduct } from '../src/lib/pricing.js';
 import { sendEmail } from './email.js';
 import { runSeed } from './seed.js';
 import { optimizeAndStore, bufferFromBase64 } from './imageOptimize.js';
@@ -364,12 +365,36 @@ function redactMoney(entity, record, user) {
   return out;
 }
 
+// Hidden price markup: for NON-admin (storefront/customer) readers, prices are
+// returned marked-up so every surface — listing, product page, cart, checkout —
+// shows the final price consistently. Admins read BASE prices so the product
+// editor keeps editing true base values (markup stays reversible). Applies to
+// the product price, compare-at price, and each size/tier price.
+function applyProductMarkupForReader(product, user) {
+  if (!product || isAdmin(user)) return product;
+  const pct = markupPctForProduct(product, getGlobalMarkupPct());
+  if (!pct) { const { markup_pct: _omit, ...rest } = product; return rest; }
+  const out = { ...product };
+  delete out.markup_pct;
+  if (out.price != null) out.price = applyMarkup(out.price, pct);
+  if (out.compare_at_price != null) out.compare_at_price = applyMarkup(out.compare_at_price, pct);
+  if (Array.isArray(out.sizes)) {
+    out.sizes = out.sizes.map((s) => (s && s.price != null ? { ...s, price: applyMarkup(s.price, pct) } : s));
+  }
+  if (Array.isArray(out.tiers)) {
+    out.tiers = out.tiers.map((t) => (t && t.total_price != null ? { ...t, total_price: applyMarkup(t.total_price, pct) } : t));
+  }
+  return out;
+}
+
 app.get('/api/entities/:entity', ensureEntity, authorizeRead, (req, res) => {
   try {
     const user = getUserFromRequest(req);
     const { query, sort, limit } = parseListParams(req);
+    const isProduct = req.params.entity === 'Product';
     const records = queryRecords(req.params.entity, { query, sort, limit })
-      .map((r) => redactMoney(req.params.entity, sanitize(req.params.entity, r), user));
+      .map((r) => redactMoney(req.params.entity, sanitize(req.params.entity, r), user))
+      .map((r) => (isProduct ? applyProductMarkupForReader(r, user) : r));
     res.json(records);
   } catch (e) { handleError(res, e); }
 });
@@ -379,13 +404,19 @@ app.get('/api/entities/:entity/:id', ensureEntity, authorizeRead, (req, res) => 
     const user = getUserFromRequest(req);
     const record = getRecord(req.params.entity, req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
-    res.json(redactMoney(req.params.entity, sanitize(req.params.entity, record), user));
+    let out = redactMoney(req.params.entity, sanitize(req.params.entity, record), user);
+    if (req.params.entity === 'Product') out = applyProductMarkupForReader(out, user);
+    res.json(out);
   } catch (e) { handleError(res, e); }
 });
 
 app.post('/api/entities/:entity', ensureEntity, authorizeWrite('create'), (req, res) => {
   try {
-    const record = createRecord(req.params.entity, req.body || {});
+    let payload = req.body || {};
+    // Orders: recompute every price server-side (size + tier + markup) and the
+    // delivery/total, so a tampered client can never dictate what it pays.
+    if (req.params.entity === 'Order') payload = recomputeOrder(payload);
+    const record = createRecord(req.params.entity, payload);
     res.json(sanitize(req.params.entity, record));
   } catch (e) { handleError(res, e); }
 });

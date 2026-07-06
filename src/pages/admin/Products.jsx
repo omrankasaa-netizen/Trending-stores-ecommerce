@@ -32,6 +32,7 @@ const EMPTY = {
   category: "garden", price: "", compare_at_price: "", stock_quantity: "",
   image_url: "", images: [], video_url: "", status: "active",
   is_featured: false, is_trending: false, is_bestseller: false, is_new: false,
+  sizes: [], tiers: [], free_delivery: false, markup_pct: "",
 };
 
 function DiscountPreview({ price, compareAt, t }) {
@@ -77,12 +78,26 @@ export default function AdminProducts() {
   }, [location.search]);
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
+  // Turn null/undefined numeric fields into "" so the controlled inputs stay
+  // controlled (React warns on value={null}).
+  const hydrateVariants = (p) => ({
+    sizes: (Array.isArray(p.sizes) ? p.sizes : []).map((s) => ({
+      label: s.label || "", label_ar: s.label_ar || "",
+      price: s.price ?? "", stock_quantity: s.stock_quantity ?? "",
+    })),
+    tiers: (Array.isArray(p.tiers) ? p.tiers : []).map((tr) => ({
+      min_quantity: tr.min_quantity ?? "", total_price: tr.total_price ?? "",
+      label: tr.label || "", label_ar: tr.label_ar || "", free_shipping: !!tr.free_shipping,
+    })),
+    markup_pct: p.markup_pct ?? "",
+    free_delivery: !!p.free_delivery,
+  });
   const openEdit = (p) => {
     setEditing(p);
     // Hydrate the images array from the legacy single image_url when needed so
     // existing products open with their photo already in the gallery editor.
     const images = getProductImages(p);
-    setForm({ ...EMPTY, ...p, images });
+    setForm({ ...EMPTY, ...p, images, ...hydrateVariants(p) });
     setOpen(true);
   };
   // Duplicate a product: open the editor pre-filled with a deep copy as a NEW
@@ -98,16 +113,46 @@ export default function AdminProducts() {
       name: p.name ? `${p.name} (copy)` : "",
       name_ar: p.name_ar ? `${p.name_ar} (نسخة)` : "",
       images,
+      ...hydrateVariants(p),
     });
     setOpen(true);
   };
 
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
+  // Size rows: each has label/label_ar/price/stock_quantity (own price + own stock pool).
+  const addSize = () => setForm(prev => ({ ...prev, sizes: [...(prev.sizes || []), { label: "", label_ar: "", price: "", stock_quantity: "" }] }));
+  const updateSize = (i, k, v) => setForm(prev => ({ ...prev, sizes: (prev.sizes || []).map((s, idx) => idx === i ? { ...s, [k]: v } : s) }));
+  const removeSize = (i) => setForm(prev => ({ ...prev, sizes: (prev.sizes || []).filter((_, idx) => idx !== i) }));
+
+  // Tier rows: min_quantity + total_price (ABSOLUTE bundle total) + labels + free_shipping.
+  const addTier = () => setForm(prev => ({ ...prev, tiers: [...(prev.tiers || []), { min_quantity: "", total_price: "", label: "", label_ar: "", free_shipping: false }] }));
+  const updateTier = (i, k, v) => setForm(prev => ({ ...prev, tiers: (prev.tiers || []).map((tr, idx) => idx === i ? { ...tr, [k]: v } : tr) }));
+  const removeTier = (i) => setForm(prev => ({ ...prev, tiers: (prev.tiers || []).filter((_, idx) => idx !== i) }));
+
   const save = async (addAnother = false) => {
     if (!form.name || !form.price) { toast({ title: t("Please enter the name and price", "يرجى إدخال الاسم والسعر"), variant: "destructive" }); return; }
     setSaving(true);
     const images = Array.isArray(form.images) ? form.images.filter((i) => i && i.url) : [];
+    // Normalize size rows: keep only rows with a label, coerce price/stock to numbers.
+    const sizes = (Array.isArray(form.sizes) ? form.sizes : [])
+      .filter((s) => s && (s.label || s.label_ar))
+      .map((s) => ({
+        label: s.label || "",
+        label_ar: s.label_ar || "",
+        price: s.price !== "" && s.price != null ? Number(s.price) : null,
+        stock_quantity: s.stock_quantity !== "" && s.stock_quantity != null ? Number(s.stock_quantity) : null,
+      }));
+    // Normalize tier rows: keep only rows with a valid min_quantity, coerce numbers.
+    const tiers = (Array.isArray(form.tiers) ? form.tiers : [])
+      .filter((tr) => tr && Number(tr.min_quantity) > 0)
+      .map((tr) => ({
+        min_quantity: Number(tr.min_quantity),
+        total_price: tr.total_price !== "" && tr.total_price != null ? Number(tr.total_price) : null,
+        label: tr.label || "",
+        label_ar: tr.label_ar || "",
+        free_shipping: !!tr.free_shipping,
+      }));
     const data = {
       ...form,
       images,
@@ -117,6 +162,11 @@ export default function AdminProducts() {
       price: Number(form.price),
       compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
       stock_quantity: form.stock_quantity !== "" ? Number(form.stock_quantity) : null,
+      sizes,
+      tiers,
+      free_delivery: !!form.free_delivery,
+      // Per-product markup override: empty → null (fall back to global markup).
+      markup_pct: form.markup_pct !== "" && form.markup_pct != null ? Number(form.markup_pct) : null,
     };
     if (editing) {
       const updated = await base44.entities.Product.update(editing.id, data);
@@ -379,7 +429,77 @@ export default function AdminProducts() {
                 onChange={e => f("stock_quantity", e.target.value)}
                 placeholder={t("e.g. 50", "مثال: 50")}
               />
-              <p className="text-xs text-muted-foreground mt-1">{t("Leave empty if you don't want to track quantity.", "اتركه فارغاً إذا لا تريد تتبع الكمية.")}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("Leave empty if you don't want to track quantity. When sizes are added below, each size tracks its own stock.", "اتركه فارغاً إذا لا تريد تتبع الكمية. عند إضافة مقاسات بالأسفل، لكل مقاس مخزونه الخاص.")}</p>
+            </div>
+
+            {/* Sizes (each with its own price + own stock pool) */}
+            <div className="bg-gray-50 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-1">
+                <Label className="font-black text-base">{t("Sizes (optional)", "المقاسات (اختياري)")}</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addSize} className="gap-1.5 rounded-lg h-8">
+                  <Plus className="w-3.5 h-3.5" />{t("Add size", "إضافة مقاس")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">{t("Add sizes when the product comes in variants (S/M/L, colors...). Each size has its own price and stock.", "أضف مقاسات عندما يأتي المنتج بأشكال (S/M/L، ألوان...). لكل مقاس سعره ومخزونه.")}</p>
+              {(form.sizes || []).length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {(form.sizes || []).map((s, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_1fr_90px_90px_auto] gap-2 items-center">
+                      <Input placeholder={t("Label (EN)", "التسمية (EN)")} value={s.label} onChange={e => updateSize(i, "label", e.target.value)} style={{ direction: "ltr" }} className="h-9 text-sm" />
+                      <Input placeholder={t("Label (AR)", "التسمية (AR)")} value={s.label_ar} onChange={e => updateSize(i, "label_ar", e.target.value)} style={{ direction: "rtl" }} className="h-9 text-sm" />
+                      <Input type="number" placeholder={t("Price", "السعر")} value={s.price} onChange={e => updateSize(i, "price", e.target.value)} className="h-9 text-sm" />
+                      <Input type="number" placeholder={t("Stock", "المخزون")} value={s.stock_quantity} onChange={e => updateSize(i, "stock_quantity", e.target.value)} className="h-9 text-sm" />
+                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeSize(i)}><Trash2 className="w-4 h-4" /></Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quantity offers / tiers (bundle TOTAL price) */}
+            <div className="bg-gray-50 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-1">
+                <Label className="font-black text-base">{t("Quantity Offers (optional)", "عروض الكمية (اختياري)")}</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addTier} className="gap-1.5 rounded-lg h-8">
+                  <Plus className="w-3.5 h-3.5" />{t("Add offer", "إضافة عرض")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">{t("Bundle deals like \"3 pcs for $25\". The price is the TOTAL for the whole bundle, not per piece.", "عروض مثل \"3 قطع بـ $25\". السعر هو الإجمالي لكامل العرض، وليس للقطعة.")}</p>
+              {(form.tiers || []).length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {(form.tiers || []).map((tr, i) => (
+                    <div key={i} className="flex flex-col gap-2 bg-white rounded-xl p-2 border border-gray-100">
+                      <div className="grid grid-cols-[80px_100px_1fr_1fr_auto] gap-2 items-center">
+                        <Input type="number" placeholder={t("Qty", "الكمية")} value={tr.min_quantity} onChange={e => updateTier(i, "min_quantity", e.target.value)} className="h-9 text-sm" />
+                        <Input type="number" placeholder={t("Total $", "الإجمالي $")} value={tr.total_price} onChange={e => updateTier(i, "total_price", e.target.value)} className="h-9 text-sm" />
+                        <Input placeholder={t("Label (EN)", "التسمية (EN)")} value={tr.label} onChange={e => updateTier(i, "label", e.target.value)} style={{ direction: "ltr" }} className="h-9 text-sm" />
+                        <Input placeholder={t("Label (AR)", "التسمية (AR)")} value={tr.label_ar} onChange={e => updateTier(i, "label_ar", e.target.value)} style={{ direction: "rtl" }} className="h-9 text-sm" />
+                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeTier(i)}><Trash2 className="w-4 h-4" /></Button>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer px-1">
+                        <Switch checked={!!tr.free_shipping} onCheckedChange={v => updateTier(i, "free_shipping", v)} />
+                        <span className="text-xs font-medium">{t("Free delivery with this offer", "توصيل مجاني مع هذا العرض")}</span>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Free delivery flag + hidden markup override */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
+                <Switch checked={!!form.free_delivery} onCheckedChange={v => f("free_delivery", v)} />
+                <div>
+                  <span className="text-sm font-bold block">{t("🚚 Free delivery", "🚚 توصيل مجاني")}</span>
+                  <span className="text-xs text-muted-foreground">{t("Waives the delivery fee if this item is in the cart.", "يلغي رسوم التوصيل إذا كان هذا المنتج في السلة.")}</span>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <Label className="text-sm font-bold">{t("Markup override (%)", "نسبة الربح الخاصة (%)")}</Label>
+                <Input type="number" className="mt-1 h-9" value={form.markup_pct} onChange={e => f("markup_pct", e.target.value)} placeholder={t("Leave empty to use global markup", "اتركه فارغاً لاستخدام النسبة العامة")} />
+                <p className="text-xs text-muted-foreground mt-1">{t("Hidden % added on top of this product's price. Empty = use the store-wide markup.", "نسبة مخفية تُضاف فوق سعر هذا المنتج. فارغ = استخدام النسبة العامة للمتجر.")}</p>
+              </div>
             </div>
 
             {/* Images (multi-photo gallery with per-image 3:4 framing) */}

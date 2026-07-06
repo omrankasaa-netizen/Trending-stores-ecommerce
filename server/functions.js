@@ -1,5 +1,8 @@
 import { getRecord, createRecord, updateRecord, deleteRecord, queryRecords, nowIso, kvGet, kvSet } from './db.js';
 import { sendEmail } from './email.js';
+import {
+  resolveLineItem, decrementStockPatch, restockStockPatch,
+} from '../src/lib/pricing.js';
 
 // ─── Brand / email constants ────────────────────────────────────────────────
 const STORE_NAME = 'Trending Store';
@@ -74,9 +77,112 @@ function emailShell(headingHtml, bodyHtml) {
 // All functions return a plain object. The HTTP layer wraps it as { data }.
 // `user` is the authenticated user (or null for public-invokable functions).
 
+// ─── Hidden price markup (reversible, server-authoritative) ──────────────────
+// A store-wide markup percentage applied on top of every base/size/tier price
+// at read + checkout time. Base prices are never mutated, so it is fully
+// reversible. Per-product overrides live on the product doc (product.markup_pct)
+// and win over this global value. Default 0% → no behavior change.
+const MARKUP_CONFIG_KEY = 'price_markup_config';
+
+export function getGlobalMarkupPct() {
+  const raw = kvGet(MARKUP_CONFIG_KEY);
+  if (!raw) return 0;
+  try {
+    const parsed = JSON.parse(raw);
+    const v = Number(parsed?.global_pct);
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function getMarkupConfig() {
+  return { global_pct: getGlobalMarkupPct() };
+}
+
+function saveMarkupConfig(body) {
+  let pct = Number(body?.global_pct);
+  if (!Number.isFinite(pct)) pct = 0;
+  // Clamp to a sane range so a typo can't wipe out or explode the catalog.
+  if (pct < 0) pct = 0;
+  if (pct > 1000) pct = 1000;
+  kvSet(MARKUP_CONFIG_KEY, JSON.stringify({ global_pct: pct }));
+  return { ok: true, global_pct: pct };
+}
+
+// ─── Server-authoritative order recompute ────────────────────────────────────
+// Re-derive every line price, the subtotal, the delivery fee and the total from
+// the AUTHORITATIVE product data — never trusting client-sent prices. Applies
+// size pricing, quantity-tier (bundle) pricing and the hidden markup. Also
+// auto-waives delivery when any free-delivery item is in the cart. Preserves the
+// existing coupon discount (sanitized) and shipping behavior for normal carts.
+export function recomputeOrder(orderData = {}) {
+  const items = Array.isArray(orderData.items) ? orderData.items : [];
+  if (items.length === 0) return orderData;
+  const globalPct = getGlobalMarkupPct();
+
+  let subtotal = 0;
+  let anyFreeDelivery = false;
+  const recomputedItems = items.map((item) => {
+    const pid = item.product_id || item.id;
+    const product = pid ? getRecord('Product', pid) : null;
+    // Unknown product (e.g. deleted): keep the client line as-is rather than
+    // dropping it, but still count its total toward the subtotal.
+    if (!product) {
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      const line = Number(item.price || 0) * qty;
+      subtotal += line;
+      if (item.free_delivery || item.free_shipping) anyFreeDelivery = true;
+      return item;
+    }
+    const resolved = resolveLineItem(product, {
+      size_id: item.size_id,
+      quantity: item.quantity,
+      offer_min_quantity: item.offer_min_quantity,
+    }, globalPct);
+    subtotal += resolved.line_total;
+    const freeDelivery = !!product.free_delivery || resolved.free_shipping;
+    if (freeDelivery) anyFreeDelivery = true;
+    return {
+      ...item,
+      quantity: resolved.quantity,
+      price: resolved.unit_price,
+      size_id: resolved.size_id || item.size_id || '',
+      size_label: resolved.size_label || item.size_label || '',
+      size_label_ar: resolved.size_label_ar || item.size_label_ar || '',
+      offer_min_quantity: resolved.tier_min_quantity ?? item.offer_min_quantity ?? null,
+      offer_label: resolved.tier_label || item.offer_label || '',
+      offer_label_ar: resolved.tier_label_ar || item.offer_label_ar || '',
+      free_delivery: freeDelivery,
+    };
+  });
+  subtotal = Math.round(subtotal * 100) / 100;
+
+  // Delivery fee: waived when a free-delivery item is present, else the store
+  // setting (mirrors the storefront's "fee applies when there is a subtotal").
+  const feeSetting = queryRecords('SiteSettings', { query: { key: 'delivery_fee' }, limit: 1 })[0];
+  const baseFee = Number(feeSetting?.value) || 0;
+  const deliveryFee = anyFreeDelivery || subtotal <= 0 ? 0 : baseFee;
+
+  // Preserve the coupon discount but never let it exceed the recomputed subtotal.
+  const discount = Math.min(subtotal, Math.max(0, Number(orderData.discount) || 0));
+  const total = Math.max(0, subtotal - discount) + deliveryFee;
+
+  return {
+    ...orderData,
+    items: recomputedItems,
+    subtotal,
+    discount,
+    delivery_fee: deliveryFee,
+    free_delivery_applied: anyFreeDelivery,
+    total: Math.round(total * 100) / 100,
+  };
+}
+
 // ─── Stock decrement on order ───────────────────────────────────────────────
-// Decrement product stock for each line of an order. Clamp at >= 0. Idempotent
-// via order.stock_committed.
+// Decrement stock for each line of an order, drawing down the SELECTED SIZE's
+// pool when the line targets a size (else the product's top-level stock).
+// Idempotent via order.stock_committed.
 function commitStock({ order_id }) {
   const order = getRecord('Order', order_id);
   if (!order) return { _status: 404, error: 'Order not found' };
@@ -87,12 +193,40 @@ function commitStock({ order_id }) {
     if (!pid) continue;
     const product = getRecord('Product', pid);
     if (!product) continue;
-    const prev = Number(product.stock_quantity || 0);
-    const next = Math.max(0, prev - Number(item.quantity || 1));
-    updateRecord('Product', pid, { stock_quantity: next });
+    const patch = decrementStockPatch(product, item.size_id, item.quantity || 1);
+    if (patch) updateRecord('Product', pid, patch);
   }
   updateRecord('Order', order_id, { stock_committed: true });
   return { ok: true };
+}
+
+// ─── Inventory restock on cancellation ───────────────────────────────────────
+// Return each order line's quantity to the correct SIZE's pool (mirror of
+// commitStock). Guards against double-restock via order.stock_restocked and
+// only restocks stock that was actually committed. Also flips the order status
+// to 'cancelled' so the transition + restock happen atomically from one call.
+function cancelOrder({ order_id }) {
+  const order = getRecord('Order', order_id);
+  if (!order) return { _status: 404, error: 'Order not found' };
+
+  const alreadyCancelled = order.status === 'cancelled';
+  let restocked = false;
+  if (order.stock_committed && !order.stock_restocked) {
+    for (const item of orderItems(order)) {
+      const pid = item.product_id || item.id;
+      if (!pid) continue;
+      const product = getRecord('Product', pid);
+      if (!product) continue;
+      const patch = restockStockPatch(product, item.size_id, item.quantity || 1);
+      if (patch) updateRecord('Product', pid, patch);
+    }
+    restocked = true;
+  }
+
+  const patch = { status: 'cancelled' };
+  if (restocked) patch.stock_restocked = true;
+  const updated = updateRecord('Order', order_id, patch);
+  return { ok: true, restocked, already_cancelled: alreadyCancelled, order: updated };
 }
 
 // ─── Order confirmation (customer) ──────────────────────────────────────────
@@ -630,6 +764,9 @@ function deleteMyAddress(body, user) {
 
 const REGISTRY = {
   commitStock,
+  cancelOrder,
+  getMarkupConfig,
+  saveMarkupConfig,
   getMyOrders,
   listMyAddresses,
   saveMyAddress,
@@ -661,6 +798,9 @@ const REGISTRY = {
 // Unlisted functions default to 'admin' (fail-safe, never 'public').
 const GUARDS = {
   commitStock: 'public',
+  cancelOrder: 'admin',
+  getMarkupConfig: 'admin',
+  saveMarkupConfig: 'admin',
   getMyOrders: 'auth',
   listMyAddresses: 'auth',
   saveMyAddress: 'auth',
