@@ -82,6 +82,14 @@ export default function AdminProducts() {
     sizes: (Array.isArray(p.sizes) ? p.sizes : []).map((s) => ({
       label: s.label || "", label_ar: s.label_ar || "",
       price: s.price ?? "", stock_quantity: s.stock_quantity ?? "",
+      // Per-size photo(s) — array of {url,focal,crop}. Accept a legacy single
+      // `image` object too so older data opens cleanly.
+      images: Array.isArray(s.images) ? s.images : (s.image ? [s.image] : []),
+      // Per-size quantity offers (same shape as product-level tiers).
+      offers: (Array.isArray(s.offers) ? s.offers : []).map((o) => ({
+        min_quantity: o.min_quantity ?? "", total_price: o.total_price ?? "",
+        label: o.label || "", label_ar: o.label_ar || "", free_shipping: !!o.free_shipping,
+      })),
     })),
     tiers: (Array.isArray(p.tiers) ? p.tiers : []).map((tr) => ({
       min_quantity: tr.min_quantity ?? "", total_price: tr.total_price ?? "",
@@ -118,10 +126,16 @@ export default function AdminProducts() {
 
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
-  // Size rows: each has label/label_ar/price/stock_quantity (own price + own stock pool).
-  const addSize = () => setForm(prev => ({ ...prev, sizes: [...(prev.sizes || []), { label: "", label_ar: "", price: "", stock_quantity: "" }] }));
+  // Size rows: each has label/label_ar/price/stock_quantity (own price + own
+  // stock pool), plus an optional photo list and its own quantity offers.
+  const addSize = () => setForm(prev => ({ ...prev, sizes: [...(prev.sizes || []), { label: "", label_ar: "", price: "", stock_quantity: "", images: [], offers: [] }] }));
   const updateSize = (i, k, v) => setForm(prev => ({ ...prev, sizes: (prev.sizes || []).map((s, idx) => idx === i ? { ...s, [k]: v } : s) }));
   const removeSize = (i) => setForm(prev => ({ ...prev, sizes: (prev.sizes || []).filter((_, idx) => idx !== i) }));
+
+  // Per-size offer rows: min_quantity + total_price (ABSOLUTE bundle total) + labels + free_shipping.
+  const addSizeOffer = (i) => setForm(prev => ({ ...prev, sizes: (prev.sizes || []).map((s, idx) => idx === i ? { ...s, offers: [...(s.offers || []), { min_quantity: "", total_price: "", label: "", label_ar: "", free_shipping: false }] } : s) }));
+  const updateSizeOffer = (i, j, k, v) => setForm(prev => ({ ...prev, sizes: (prev.sizes || []).map((s, idx) => idx === i ? { ...s, offers: (s.offers || []).map((o, oi) => oi === j ? { ...o, [k]: v } : o) } : s) }));
+  const removeSizeOffer = (i, j) => setForm(prev => ({ ...prev, sizes: (prev.sizes || []).map((s, idx) => idx === i ? { ...s, offers: (s.offers || []).filter((_, oi) => oi !== j) } : s) }));
 
   // Tier rows: min_quantity + total_price (ABSOLUTE bundle total) + labels + free_shipping.
   const addTier = () => setForm(prev => ({ ...prev, tiers: [...(prev.tiers || []), { min_quantity: "", total_price: "", label: "", label_ar: "", free_shipping: false }] }));
@@ -150,6 +164,11 @@ export default function AdminProducts() {
       if (!(s.label || s.label_ar)) continue;
       if (s.price !== "" && s.price != null && (!Number.isFinite(Number(s.price)) || Number(s.price) < 0)) return t("Size price must be 0 or more", "سعر المقاس يجب أن يكون 0 أو أكثر");
       if (s.stock_quantity !== "" && s.stock_quantity != null && (!Number.isFinite(Number(s.stock_quantity)) || Number(s.stock_quantity) < 0)) return t("Size stock must be 0 or more", "مخزون المقاس يجب أن يكون 0 أو أكثر");
+      for (const o of (Array.isArray(s.offers) ? s.offers : [])) {
+        if (o.min_quantity === "" || o.min_quantity == null) continue;
+        if (!Number.isFinite(Number(o.min_quantity)) || Number(o.min_quantity) <= 0) return t("Offer quantity must be greater than 0", "كمية العرض يجب أن تكون أكبر من 0");
+        if (o.total_price !== "" && o.total_price != null && (!Number.isFinite(Number(o.total_price)) || Number(o.total_price) < 0)) return t("Offer total price must be 0 or more", "سعر العرض يجب أن يكون 0 أو أكثر");
+      }
     }
     for (const tr of (Array.isArray(form.tiers) ? form.tiers : [])) {
       if (tr.min_quantity === "" || tr.min_quantity == null) continue;
@@ -172,6 +191,18 @@ export default function AdminProducts() {
         label_ar: s.label_ar || "",
         price: s.price !== "" && s.price != null ? Number(s.price) : null,
         stock_quantity: s.stock_quantity !== "" && s.stock_quantity != null ? Number(s.stock_quantity) : null,
+        // Per-size photo(s): keep only entries with a url.
+        images: (Array.isArray(s.images) ? s.images : []).filter((im) => im && im.url),
+        // Per-size offers: keep only rows with a valid quantity, coerce numbers.
+        offers: (Array.isArray(s.offers) ? s.offers : [])
+          .filter((o) => o && Number(o.min_quantity) > 0)
+          .map((o) => ({
+            min_quantity: Number(o.min_quantity),
+            total_price: o.total_price !== "" && o.total_price != null ? Number(o.total_price) : null,
+            label: o.label || "",
+            label_ar: o.label_ar || "",
+            free_shipping: !!o.free_shipping,
+          })),
       }));
     // Normalize tier rows: keep only rows with a valid min_quantity, coerce numbers.
     const tiers = (Array.isArray(form.tiers) ? form.tiers : [])
@@ -486,14 +517,55 @@ export default function AdminProducts() {
               </div>
               <p className="text-xs text-muted-foreground mb-3">{t("Add sizes when the product comes in variants (S/M/L, colors...). Each size has its own price and stock.", "أضف مقاسات عندما يأتي المنتج بأشكال (S/M/L، ألوان...). لكل مقاس سعره ومخزونه.")}</p>
               {(form.sizes || []).length > 0 && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   {(form.sizes || []).map((s, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_1fr_90px_90px_auto] gap-2 items-center">
-                      <Input placeholder={t("Label (EN)", "التسمية (EN)")} value={s.label} onChange={e => updateSize(i, "label", e.target.value)} style={{ direction: "ltr" }} className="h-9 text-sm" />
-                      <Input placeholder={t("Label (AR)", "التسمية (AR)")} value={s.label_ar} onChange={e => updateSize(i, "label_ar", e.target.value)} style={{ direction: "rtl" }} className="h-9 text-sm" />
-                      <Input type="number" placeholder={t("Price", "السعر")} value={s.price} onChange={e => updateSize(i, "price", e.target.value)} className="h-9 text-sm" />
-                      <Input type="number" placeholder={t("Stock", "المخزون")} value={s.stock_quantity} onChange={e => updateSize(i, "stock_quantity", e.target.value)} className="h-9 text-sm" />
-                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeSize(i)}><Trash2 className="w-4 h-4" /></Button>
+                    <div key={i} className="flex flex-col gap-3 bg-white rounded-xl p-3 border border-gray-100">
+                      <div className="grid grid-cols-[1fr_1fr_90px_90px_auto] gap-2 items-center">
+                        <Input placeholder={t("Label (EN)", "التسمية (EN)")} value={s.label} onChange={e => updateSize(i, "label", e.target.value)} style={{ direction: "ltr" }} className="h-9 text-sm" />
+                        <Input placeholder={t("Label (AR)", "التسمية (AR)")} value={s.label_ar} onChange={e => updateSize(i, "label_ar", e.target.value)} style={{ direction: "rtl" }} className="h-9 text-sm" />
+                        <Input type="number" placeholder={t("Price", "السعر")} value={s.price} onChange={e => updateSize(i, "price", e.target.value)} className="h-9 text-sm" />
+                        <Input type="number" placeholder={t("Stock", "المخزون")} value={s.stock_quantity} onChange={e => updateSize(i, "stock_quantity", e.target.value)} className="h-9 text-sm" />
+                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeSize(i)}><Trash2 className="w-4 h-4" /></Button>
+                      </div>
+
+                      {/* Per-size quantity offers */}
+                      <div className="rounded-lg bg-gray-50 p-2.5">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold">{t("Offers for this size", "عروض هذا المقاس")}</span>
+                          <Button type="button" variant="outline" size="sm" onClick={() => addSizeOffer(i)} className="gap-1 rounded-lg h-7 text-xs">
+                            <Plus className="w-3 h-3" />{t("Add offer", "إضافة عرض")}
+                          </Button>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mb-2">{t("Bundle deals for this size only (e.g. \"2 pcs for $20\"). Price is the TOTAL for the bundle. If left empty, the product-level offers are used.", "عروض خاصة بهذا المقاس فقط (مثل \"قطعتان بـ $20\"). السعر هو الإجمالي للعرض. إذا تُرك فارغاً، تُستخدم عروض المنتج العامة.")}</p>
+                        {(s.offers || []).length > 0 && (
+                          <div className="flex flex-col gap-2">
+                            {(s.offers || []).map((o, j) => (
+                              <div key={j} className="flex flex-col gap-1.5 bg-white rounded-lg p-2 border border-gray-100">
+                                <div className="grid grid-cols-[70px_90px_1fr_1fr_auto] gap-1.5 items-center">
+                                  <Input type="number" placeholder={t("Qty", "الكمية")} value={o.min_quantity} onChange={e => updateSizeOffer(i, j, "min_quantity", e.target.value)} className="h-8 text-sm" />
+                                  <Input type="number" placeholder={t("Total $", "الإجمالي $")} value={o.total_price} onChange={e => updateSizeOffer(i, j, "total_price", e.target.value)} className="h-8 text-sm" />
+                                  <Input placeholder={t("Label (EN)", "التسمية (EN)")} value={o.label} onChange={e => updateSizeOffer(i, j, "label", e.target.value)} style={{ direction: "ltr" }} className="h-8 text-sm" />
+                                  <Input placeholder={t("Label (AR)", "التسمية (AR)")} value={o.label_ar} onChange={e => updateSizeOffer(i, j, "label_ar", e.target.value)} style={{ direction: "rtl" }} className="h-8 text-sm" />
+                                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeSizeOffer(i, j)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                                </div>
+                                <label className="flex items-center gap-2 cursor-pointer px-0.5">
+                                  <Switch checked={!!o.free_shipping} onCheckedChange={v => updateSizeOffer(i, j, "free_shipping", v)} />
+                                  <span className="text-[11px] font-medium">{t("Free delivery with this offer", "توصيل مجاني مع هذا العرض")}</span>
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Per-size photo(s) — reuses the product image editor */}
+                      <div className="rounded-lg bg-gray-50 p-2.5">
+                        <ProductImagesEditor
+                          images={s.images || []}
+                          onChange={(imgs) => updateSize(i, "images", imgs)}
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">{t("Optional. Shown when the customer selects this size. Falls back to the product images if empty.", "اختياري. تظهر عند اختيار العميل لهذا المقاس. تُستخدم صور المنتج إذا تُركت فارغة.")}</p>
+                      </div>
                     </div>
                   ))}
                 </div>

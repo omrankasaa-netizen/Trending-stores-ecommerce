@@ -383,7 +383,14 @@ function applyProductMarkupForReader(product, user) {
   if (out.price != null) out.price = applyMarkup(out.price, pct);
   if (out.compare_at_price != null) out.compare_at_price = applyMarkup(out.compare_at_price, pct);
   if (Array.isArray(out.sizes)) {
-    out.sizes = out.sizes.map((s) => (s && s.price != null ? { ...s, price: applyMarkup(s.price, pct) } : s));
+    out.sizes = out.sizes.map((s) => {
+      if (!s || typeof s !== 'object') return s;
+      const ns = s.price != null ? { ...s, price: applyMarkup(s.price, pct) } : { ...s };
+      if (Array.isArray(s.offers)) {
+        ns.offers = s.offers.map((o) => (o && o.total_price != null ? { ...o, total_price: applyMarkup(o.total_price, pct) } : o));
+      }
+      return ns;
+    });
   }
   if (Array.isArray(out.tiers)) {
     out.tiers = out.tiers.map((t) => (t && t.total_price != null ? { ...t, total_price: applyMarkup(t.total_price, pct) } : t));
@@ -430,9 +437,16 @@ function sanitizeProductWrite(payload) {
   if (out.price !== undefined) out.price = clampNonNeg(out.price);
   if (out.compare_at_price !== undefined) out.compare_at_price = clampNonNeg(out.compare_at_price);
   if (Array.isArray(out.sizes)) {
-    out.sizes = out.sizes.map((s) => (s && typeof s === 'object'
-      ? { ...s, stock_quantity: clampNonNeg(s.stock_quantity), price: clampNonNeg(s.price) }
-      : s));
+    out.sizes = out.sizes.map((s) => {
+      if (!s || typeof s !== 'object') return s;
+      const ns = { ...s, stock_quantity: clampNonNeg(s.stock_quantity), price: clampNonNeg(s.price) };
+      if (Array.isArray(s.offers)) {
+        ns.offers = s.offers.map((o) => (o && typeof o === 'object'
+          ? { ...o, min_quantity: clampNonNeg(o.min_quantity), total_price: clampNonNeg(o.total_price) }
+          : o));
+      }
+      return ns;
+    });
   }
   return out;
 }

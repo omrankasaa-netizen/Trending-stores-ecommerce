@@ -102,6 +102,96 @@ test('resolveLineItem: qty above a tier uses per-unit-equivalent of best tier', 
   assert.equal(r.line_total, 32);
 });
 
+// ── Per-size offers (with product-level fallback) ───────────────────────────
+test('getTiers: a size with its own offers overrides product-level tiers', () => {
+  const product = {
+    tiers: [{ min_quantity: 3, total_price: 16 }],
+    sizes: [{ id: 'l', label: 'Large', price: 12, offers: [{ min_quantity: 2, total_price: 20 }] }],
+  };
+  const large = findSize(product, 'l');
+  const tiers = getTiers(product, large);
+  assert.equal(tiers.length, 1);
+  assert.equal(tiers[0].min_quantity, 2);
+  assert.equal(tiers[0].total_price, 20);
+});
+
+test('getTiers: a size with NO offers falls back to product-level tiers', () => {
+  const product = {
+    tiers: [{ min_quantity: 3, total_price: 16 }],
+    sizes: [{ id: 's', label: 'Small', price: 4 }],
+  };
+  const small = findSize(product, 's');
+  const tiers = getTiers(product, small);
+  assert.equal(tiers.length, 1);
+  assert.equal(tiers[0].min_quantity, 3);
+});
+
+test('getTiers: an empty size offers array falls back to product-level tiers', () => {
+  const product = {
+    tiers: [{ min_quantity: 3, total_price: 16 }],
+    sizes: [{ id: 'm', label: 'Medium', price: 7, offers: [] }],
+  };
+  assert.equal(getTiers(product, findSize(product, 'm'))[0].min_quantity, 3);
+});
+
+test('resolveLineItem: uses the SELECTED size offers, not another size or product', () => {
+  const product = {
+    price: 10,
+    tiers: [{ min_quantity: 5, total_price: 12 }], // product-level (Small-style)
+    sizes: [
+      { id: 's', label: 'Small', price: 4, offers: [{ min_quantity: 5, total_price: 12, label: 'Small Offer', label_ar: 'عرض الصغير' }] },
+      { id: 'l', label: 'Large', price: 12, offers: [{ min_quantity: 2, total_price: 20, label: 'Large Offer', label_ar: 'عرض الكبير' }] },
+    ],
+  };
+  // Large: only its own 2-pc offer applies.
+  const large2 = resolveLineItem(product, { size_id: 'l', offer_min_quantity: 2 });
+  assert.equal(large2.quantity, 2);
+  assert.equal(large2.line_total, 20);
+  assert.equal(large2.tier_label, 'Large Offer');
+  // Large has NO 5-pc offer → that min_quantity resolves to no tier (plain price).
+  const largeNo5 = resolveLineItem(product, { size_id: 'l', offer_min_quantity: 5 });
+  assert.equal(largeNo5.tier_min_quantity, null);
+  // Small: its own 5-pc offer applies.
+  const small5 = resolveLineItem(product, { size_id: 's', offer_min_quantity: 5 });
+  assert.equal(small5.quantity, 5);
+  assert.equal(small5.line_total, 12);
+});
+
+test('resolveLineItem: size without offers falls back to product-level tiers', () => {
+  const product = {
+    price: 10,
+    tiers: [{ min_quantity: 3, total_price: 16 }],
+    sizes: [{ id: 'm', label: 'Medium', price: 7 }],
+  };
+  const r = resolveLineItem(product, { size_id: 'm', offer_min_quantity: 3 });
+  assert.equal(r.quantity, 3);
+  assert.equal(r.line_total, 16);
+});
+
+test('resolveLineItem: per-size offer total stacks markup (server recompute)', () => {
+  const product = {
+    price: 10, markup_pct: 10,
+    sizes: [{ id: 'l', label: 'L', price: 12, offers: [{ min_quantity: 2, total_price: 20, free_shipping: true }] }],
+  };
+  const r = resolveLineItem(product, { size_id: 'l', offer_min_quantity: 2 }, 5);
+  assert.equal(r.base_line_total, 20);
+  assert.equal(r.line_total, 22); // 20 + 10% (per-product override wins over global)
+  assert.equal(r.free_shipping, true);
+});
+
+test('buildOfferOptions: reflects the selected size offers only', () => {
+  const product = {
+    price: 10,
+    tiers: [{ min_quantity: 9, total_price: 90 }],
+    sizes: [{ id: 'l', label: 'L', price: 12, offers: [{ min_quantity: 2, total_price: 20 }] }],
+  };
+  const opts = buildOfferOptions(product, findSize(product, 'l'));
+  assert.equal(opts.length, 2);       // single + the size's one offer
+  assert.equal(opts[0].unit_price, 12); // 1 pc at the size price
+  assert.equal(opts[1].min_quantity, 2);
+  assert.equal(opts[1].total_price, 20);
+});
+
 // ── buildOfferOptions ──────────────────────────────────────────────────────
 test('buildOfferOptions: single-unit first, then tiers, markup-inclusive', () => {
   const product = { price: 10, markup_pct: 10, tiers: [{ min_quantity: 3, total_price: 24 }] };

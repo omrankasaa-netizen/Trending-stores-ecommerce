@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { MessageCircle, ShoppingCart, Truck, Shield, RotateCcw, ChevronRight, Plus, Minus, Play } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { formatPrice } from "@/lib/utils";
-import { getProductImages, getImageFrameStyle, hasCrop } from "@/lib/productImages";
+import { getImagesForVariant, getImageFrameStyle, hasCrop } from "@/lib/productImages";
 import { getSizes, sizeId, findSize, buildOfferOptions } from "@/lib/pricing";
 import { trackViewContent } from "@/lib/metaPixel";
 
@@ -85,7 +85,9 @@ export default function ProductDetail() {
   const discount = product.compare_at_price && product.compare_at_price > basePrice
     ? Math.round((1 - basePrice / product.compare_at_price) * 100) : null;
 
-  const images = getProductImages(product);
+  // Gallery reflects the selected variant: a size's own photo(s) lead, falling
+  // back to the product's default images when the size has none.
+  const images = getImagesForVariant(product, selectedSize);
   const activeImage = images[Math.min(activeImg, Math.max(0, images.length - 1))] || null;
 
   const whatsappMsg = isRTL
@@ -256,7 +258,7 @@ export default function ProductDetail() {
                       <button
                         key={sid}
                         disabled={soldOut}
-                        onClick={() => { setSelectedSizeId(sid); setSelectedOfferKey("single"); }}
+                        onClick={() => { setSelectedSizeId(sid); setSelectedOfferKey("single"); setActiveImg(0); setShowVideo(false); }}
                         className={`px-4 h-11 rounded-xl border-2 font-bold text-sm transition-colors ${active ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary"} ${soldOut ? "opacity-40 line-through cursor-not-allowed" : ""}`}
                         style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}
                       >

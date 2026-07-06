@@ -72,8 +72,19 @@ export function baseUnitPrice(product, size) {
 }
 
 // ── Tiers / quantity offers ──────────────────────────────────────────────────
-export function getTiers(product) {
-  const arr = Array.isArray(product?.tiers) ? product.tiers : [];
+// Offers/tiers can be defined PER SIZE (size.offers) — the primary model — or
+// PER PRODUCT (product.tiers) as a backward-compatible fallback. Both use the
+// same shape: { min_quantity, total_price, label, label_ar, free_shipping }.
+//
+// Resolution rule: when a size is selected AND that size has its own (non-empty)
+// offers list, use ONLY that size's offers. Otherwise fall back to the
+// product-level tiers (existing behavior). This keeps products with legacy
+// product-level offers working while new/edited products drive offers per size.
+export function getTiers(product, size = null) {
+  const sizeOffers = Array.isArray(size?.offers) ? size.offers : null;
+  const arr = sizeOffers && sizeOffers.length
+    ? sizeOffers
+    : (Array.isArray(product?.tiers) ? product.tiers : []);
   return arr
     .filter((t) => t && num(t.min_quantity) != null && num(t.min_quantity) > 0)
     .slice()
@@ -81,10 +92,10 @@ export function getTiers(product) {
 }
 
 // The applicable tier for a chosen quantity = the highest min_quantity <= qty.
-export function resolveTier(product, quantity) {
+export function resolveTier(product, quantity, size = null) {
   const q = num(quantity) || 0;
   let match = null;
-  for (const t of getTiers(product)) {
+  for (const t of getTiers(product, size)) {
     if (q >= Number(t.min_quantity)) match = t;
   }
   return match;
@@ -92,10 +103,10 @@ export function resolveTier(product, quantity) {
 
 // Find a specific tier by its min_quantity (used when the customer picks a
 // concrete offer from the dropdown).
-export function findTierByMin(product, minQuantity) {
+export function findTierByMin(product, minQuantity, size = null) {
   const m = num(minQuantity);
   if (m == null) return null;
-  return getTiers(product).find((t) => Number(t.min_quantity) === m) || null;
+  return getTiers(product, size).find((t) => Number(t.min_quantity) === m) || null;
 }
 
 // ── Core resolution ──────────────────────────────────────────────────────────
@@ -110,13 +121,15 @@ export function resolveLineItem(product, selection = {}, globalPct = 0) {
   const markupPct = markupPctForProduct(product, globalPct);
 
   // An explicitly chosen offer fixes the quantity to the tier's bundle size.
+  // Offers resolve against the SELECTED SIZE first (per-size offers), falling
+  // back to product-level tiers when the size has none.
   let tier = null;
   if (selection.offer_min_quantity != null && selection.offer_min_quantity !== '') {
-    tier = findTierByMin(product, selection.offer_min_quantity);
+    tier = findTierByMin(product, selection.offer_min_quantity, size);
   }
   let quantity = Math.max(1, Math.floor(num(selection.quantity) || (tier ? Number(tier.min_quantity) : 1)));
   if (tier) quantity = Number(tier.min_quantity);
-  if (!tier) tier = resolveTier(product, quantity);
+  if (!tier) tier = resolveTier(product, quantity, size);
 
   const unitBase = baseUnitPrice(product, size);
 
@@ -173,7 +186,7 @@ export function buildOfferOptions(product, size, globalPct = 0) {
     label_ar: '',
     free_shipping: false,
   }];
-  for (const t of getTiers(product)) {
+  for (const t of getTiers(product, size)) {
     const q = Number(t.min_quantity);
     const tierTotal = num(t.total_price);
     const total = tierTotal != null ? applyMarkup(tierTotal, markupPct) : round2(unit * q);
