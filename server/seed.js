@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
-  createRecord, queryRecords, countRecords, kvGet, kvSet, bulkCreate, updateRecord,
+  db, createRecord, queryRecords, countRecords, kvGet, kvSet, bulkCreate, updateRecord,
+  deleteRecord,
 } from './db.js';
 import { registerUser, findUserByEmail } from './auth.js';
 import { seedLegalPages, seedFaqs } from './seedContent.js';
@@ -443,29 +444,61 @@ const SAMPLE_PRODUCTS = [
   },
 ];
 
+// Build the full Category rows from the CATEGORIES definition. Shared by the
+// boot-time (only-if-empty) path and the admin force-reseed path so the catalog
+// is defined in exactly one place.
+function buildCategoryRecords() {
+  return CATEGORIES.map((c, i) => ({
+    id: idFromSlug('cat', c.slug),
+    slug: c.slug,
+    name: c.name,
+    name_ar: c.name_ar,
+    image_url: '',
+    display_order: i,
+    is_visible: true,
+  }));
+}
+
+// Build the full Product rows from the SAMPLE_PRODUCTS catalog. Shared by the
+// boot-time and force-reseed paths (single source of truth — no duplication).
+function buildProductRecords() {
+  return SAMPLE_PRODUCTS.map((p) => ({ id: idFromSlug('prod', p.slug), ...p }));
+}
+
 function seedCatalog() {
   const existing = queryRecords('Category', {});
   const haveSlugs = new Set(existing.map((c) => c.slug));
-  const toCreate = [];
-  CATEGORIES.forEach((c, i) => {
-    if (haveSlugs.has(c.slug)) return;
-    toCreate.push({
-      id: idFromSlug('cat', c.slug),
-      slug: c.slug,
-      name: c.name,
-      name_ar: c.name_ar,
-      image_url: '',
-      display_order: i,
-      is_visible: true,
-    });
-  });
+  const toCreate = buildCategoryRecords().filter((c) => !haveSlugs.has(c.slug));
   if (toCreate.length) bulkCreate('Category', toCreate);
 
   // Seed sample products only once (skip if any product already exists).
   if (countRecords('Product') > 0) return;
-  const products = SAMPLE_PRODUCTS.map((p) => ({ id: idFromSlug('prod', p.slug), ...p }));
+  const products = buildProductRecords();
   bulkCreate('Product', products);
   console.log(`[seed] catalog: ${CATEGORIES.length} categories, ${products.length} sample products`);
+}
+
+// DANGER — DESTRUCTIVE: wipes ALL Category and Product rows and re-inserts the
+// seed catalog defined above (CATEGORIES + SAMPLE_PRODUCTS). This is the ONLY
+// non-idempotent, force seed path. It exists because boot-time seeding is
+// intentionally only-if-empty: once a live DB has any products it is never
+// re-seeded, so an updated seed catalog would never reach production. Reuses the
+// same builders as boot-time seeding — the catalog is not duplicated. Runs inside
+// a single transaction so a failure leaves the catalog untouched. Only Category
+// and Product are affected; Orders, Users, SiteSettings, etc. are left intact.
+// Exposed exclusively via the admin-authenticated POST /api/admin/reseed.
+export function reseedCatalog() {
+  const categories = buildCategoryRecords();
+  const products = buildProductRecords();
+  const run = db.transaction(() => {
+    for (const c of queryRecords('Category', {})) deleteRecord('Category', c.id);
+    for (const p of queryRecords('Product', {})) deleteRecord('Product', p.id);
+    bulkCreate('Category', categories);
+    bulkCreate('Product', products);
+  });
+  run();
+  console.log(`[reseed] catalog wiped + reseeded: ${categories.length} categories, ${products.length} products`);
+  return { products_seeded: products.length, categories_seeded: categories.length };
 }
 
 // Default storefront settings. SiteSettings uses { key, value }.
