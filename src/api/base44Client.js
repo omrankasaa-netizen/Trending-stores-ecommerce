@@ -132,6 +132,13 @@ function fileToDataUrl(file) {
   });
 }
 
+// Admin-only maintenance actions. These hit dedicated /api/admin/* routes and
+// reuse the same auth as every other call (session cookie + optional Bearer).
+const admin = {
+  // DESTRUCTIVE: wipes all categories + products and restores the seed catalog.
+  reseedCatalog: () => request('POST', '/api/admin/reseed'),
+};
+
 const integrations = {
   Core: {
     async UploadFile({ file } = {}) {
@@ -154,5 +161,5 @@ const functions = new Proxy({}, {
   get: (_t, prop) => functionInvoker(String(prop)),
 });
 
-export const base44 = { entities, auth, integrations, functions };
+export const base44 = { entities, auth, integrations, functions, admin };
 export default base44;
