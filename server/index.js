@@ -22,7 +22,7 @@ import {
 import { applyMarkup, markupPctForProduct } from '../src/lib/pricing.js';
 import { productContentId, META_CURRENCY } from '../src/lib/metaShared.js';
 import { sendEmail } from './email.js';
-import { runSeed } from './seed.js';
+import { runSeed, reseedCatalog } from './seed.js';
 import { optimizeAndStore, storeVideo, isVideoUpload, bufferFromBase64 } from './imageOptimize.js';
 import { getStorage, storageStatus } from './storage.js';
 
@@ -303,6 +303,27 @@ app.get('/api/storage-status', async (req, res) => {
     // Report the REAL active backend (reflects any boot-time R2→local fallback).
     const storage = await getStorage();
     res.json(storageStatus(process.env, storage.name));
+  } catch (e) { handleError(res, e); }
+});
+
+// ─── Catalog reseed (admin) ─────────────────────────────────────────────────
+// DANGER — DESTRUCTIVE: WIPES all Category + Product rows and re-inserts the
+// seed catalog from seed.js. Needed because boot-time seeding is only-if-empty:
+// once the DB has any products it never re-seeds, so a newly shipped seed catalog
+// never reaches an already-populated live DB. This is the ONLY force-seed path.
+// ADMIN-ONLY: same getUserFromRequest + isAdmin gate as /api/storage-status
+// (401 if unauthenticated, 403 if non-admin; never leaks anything). It only
+// touches Category + Product — Orders, Users, SiteSettings, etc. are untouched.
+app.post('/api/admin/reseed', (req, res) => {
+  try {
+    const user = getUserFromRequest(req);
+    if (!isAdmin(user)) {
+      return res.status(user ? 403 : 401).json({
+        error: user ? 'Forbidden: admin access required' : 'Authentication required',
+      });
+    }
+    const summary = reseedCatalog();
+    res.json(summary);
   } catch (e) { handleError(res, e); }
 });
 
@@ -593,6 +614,13 @@ if (fs.existsSync(DIST)) {
 }
 
 // Bind to 0.0.0.0 so the platform router (Railway/Render/etc.) can reach the app.
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Trending Store server listening on 0.0.0.0:${PORT}`);
-});
+// Only auto-listen when run directly (node server/index.js). When imported (e.g.
+// by tests) the caller controls the listener so it can pick an ephemeral port.
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Trending Store server listening on 0.0.0.0:${PORT}`);
+  });
+}
+
+export { app };
