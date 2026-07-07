@@ -43,6 +43,38 @@ export function r2Endpoint(env = process.env) {
   return env.R2_ENDPOINT || `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
 }
 
+// The full set of env vars required for R2 (mirrors isR2Configured). Exposed so
+// diagnostics can report exactly which ones are unset.
+export const R2_REQUIRED_VARS = [
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET',
+  'R2_PUBLIC_BASE_URL',
+];
+
+// Names of the required R2 vars that are currently unset. Never returns values.
+export function missingR2Vars(env = process.env) {
+  return R2_REQUIRED_VARS.filter((name) => !env[name]);
+}
+
+// Secret-safe diagnostic snapshot of the storage configuration. Returns ONLY
+// booleans, the list of MISSING var names, the (non-secret) bucket/public-base,
+// and the resolved endpoint. It never reads or returns R2_ACCESS_KEY_ID or
+// R2_SECRET_ACCESS_KEY values. `activeBackend` lets a caller report the real
+// runtime backend (which can differ from the planned one if R2 init failed).
+export function storageStatus(env = process.env, activeBackend = null) {
+  const configured = isR2Configured(env);
+  return {
+    backend: activeBackend || plannedBackendName(env),
+    r2_configured: configured,
+    missing_vars: missingR2Vars(env),
+    bucket: env.R2_BUCKET || null,
+    public_base: env.R2_PUBLIC_BASE_URL || null,
+    endpoint: configured ? r2Endpoint(env) : null,
+  };
+}
+
 function trimSlashes(s) {
   return String(s || '').replace(/\/+$/, '');
 }
