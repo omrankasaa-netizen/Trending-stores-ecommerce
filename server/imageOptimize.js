@@ -53,8 +53,46 @@ function guessContentType(filename) {
   const map = {
     jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
     gif: 'image/gif', avif: 'image/avif', svg: 'image/svg+xml', bmp: 'image/bmp',
+    mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+    m4v: 'video/x-m4v', ogv: 'video/ogg',
   };
   return map[ext] || 'application/octet-stream';
+}
+
+const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'qt', 'm4v', 'ogv']);
+
+// Decide whether an upload is a video (so it skips the sharp/image transform).
+// Checks the declared MIME type first, then the filename extension as a fallback
+// for clients that don't send a reliable content type.
+export function isVideoUpload(contentType, filename) {
+  if (contentType && String(contentType).toLowerCase().startsWith('video/')) return true;
+  const ext = path.extname(filename || '').toLowerCase().replace('.', '');
+  return VIDEO_EXTS.has(ext);
+}
+
+// Store a video AS-IS (no sharp, no resizing/re-encoding). Returns a descriptor
+// shaped like optimizeAndStore's so /api/upload can return it uniformly, but
+// flagged is_video with a single raw URL and no image variants.
+export async function storeVideo(buffer, filename, contentType) {
+  const storage = await getStorage();
+  const base = makeBaseKey(filename);
+  const ext = (path.extname(filename || '').toLowerCase()) || '.mp4';
+  const type = contentType && String(contentType).startsWith('video/')
+    ? contentType
+    : guessContentType(filename);
+  const key = `${base}/orig${ext}`;
+  const { url } = await storage.putObject(key, buffer, type);
+  return {
+    url,
+    base,
+    variants: null,
+    optimized: false,
+    is_video: true,
+    content_type: type,
+    format: ext.replace('.', '') || 'mp4',
+    width: null,
+    height: null,
+  };
 }
 
 export async function optimizeAndStore(buffer, filename) {

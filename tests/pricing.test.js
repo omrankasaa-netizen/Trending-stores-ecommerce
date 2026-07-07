@@ -3,8 +3,53 @@ import assert from 'node:assert/strict';
 import {
   markupPctForProduct, applyMarkup, getSizes, findSize, baseUnitPrice,
   getTiers, resolveTier, findTierByMin, resolveLineItem, buildOfferOptions,
-  cartHasFreeDelivery, decrementStockPatch, restockStockPatch,
+  cartHasFreeDelivery, decrementStockPatch, restockStockPatch, isInStock,
 } from '../src/lib/pricing.js';
+
+// ── Availability (isInStock) ────────────────────────────────────────────────
+test('isInStock: simple product uses product-level stock (string coercion)', () => {
+  assert.equal(isInStock({ stock_quantity: 5 }), true);
+  assert.equal(isInStock({ stock_quantity: '5' }), true);
+  assert.equal(isInStock({ stock_quantity: 0 }), false);
+  assert.equal(isInStock({ stock_quantity: '0' }), false);
+});
+
+test('isInStock: untracked (null/blank) stock is treated as available', () => {
+  assert.equal(isInStock({ stock_quantity: null }), true);
+  assert.equal(isInStock({ stock_quantity: '' }), true);
+  assert.equal(isInStock({}), true);
+});
+
+test('isInStock: sized product is in stock when ANY size has stock', () => {
+  // The core bug: product-level stock is blank but a size has stock.
+  const product = {
+    stock_quantity: null,
+    sizes: [
+      { label: 'S', stock_quantity: 0 },
+      { label: 'M', stock_quantity: 3 },
+    ],
+  };
+  assert.equal(isInStock(product), true);
+});
+
+test('isInStock: sized product is out only when EVERY size is 0', () => {
+  const product = {
+    stock_quantity: 99, // ignored because the product has sizes
+    sizes: [
+      { label: 'S', stock_quantity: 0 },
+      { label: 'M', stock_quantity: '0' },
+    ],
+  };
+  assert.equal(isInStock(product), false);
+});
+
+test('isInStock: a specific selected size overrides the product rule', () => {
+  const product = { sizes: [{ label: 'S', stock_quantity: 0 }, { label: 'M', stock_quantity: 4 }] };
+  assert.equal(isInStock(product, product.sizes[0]), false); // S sold out
+  assert.equal(isInStock(product, product.sizes[1]), true);  // M available
+  // A size with untracked stock counts as available.
+  assert.equal(isInStock(product, { label: 'L', stock_quantity: null }), true);
+});
 
 // ── Markup ────────────────────────────────────────────────────────────────
 test('applyMarkup: 0% (or invalid) is a no-op, rounds to 2dp', () => {

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MessageCircle, ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { getProductImages, getImageFrameStyle, hasCrop, imageSrc } from "@/lib/productImages";
-import { getSizes, getTiers } from "@/lib/pricing";
+import { getSizes, getTiers, isInStock } from "@/lib/pricing";
 
 const WHATSAPP = "96181751841";
 
@@ -45,7 +45,9 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
   // the shopper must choose a size/offer on the product page first.
   const hasVariants = getSizes(product).length > 0 || getTiers(product).length > 0;
 
-  const outOfStock = Number(product.stock_quantity) <= 0;
+  // Robust across the per-size stock model: a sized product is in stock when any
+  // size has stock, not when the (often blank) product-level quantity does.
+  const outOfStock = !isInStock(product);
 
   const images = getProductImages(product);
   const count = images.length;

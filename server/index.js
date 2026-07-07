@@ -23,7 +23,7 @@ import { applyMarkup, markupPctForProduct } from '../src/lib/pricing.js';
 import { productContentId, META_CURRENCY } from '../src/lib/metaShared.js';
 import { sendEmail } from './email.js';
 import { runSeed } from './seed.js';
-import { optimizeAndStore, bufferFromBase64 } from './imageOptimize.js';
+import { optimizeAndStore, storeVideo, isVideoUpload, bufferFromBase64 } from './imageOptimize.js';
 
 // Build the verification-code email HTML (Trending Store branding).
 function otpEmailHtml(code) {
@@ -48,9 +48,15 @@ runSeed();
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+// Upload payloads are base64 JSON, so the JSON body limit caps the max file
+// size (base64 inflates bytes ~33%). Videos are far larger than images, so the
+// limit is generous and tunable via UPLOAD_MAX_MB (default 150MB).
+const UPLOAD_MAX_MB = Math.max(1, Number(process.env.UPLOAD_MAX_MB) || 150);
+const BODY_LIMIT = `${UPLOAD_MAX_MB}mb`;
+
 const app = express();
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+app.use(express.json({ limit: BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 app.use(cookieParser());
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -261,14 +267,20 @@ app.post('/api/upload', async (req, res) => {
     const { file, filename } = req.body || {};
     if (!file) return res.status(400).json({ error: 'file required' });
     let ext = '';
+    let mime = '';
     const mimeMatch = String(file).match(/^data:([^;,]+)[;,]/);
     if (mimeMatch) {
-      const sub = mimeMatch[1].split('/')[1];
+      mime = mimeMatch[1];
+      const sub = mime.split('/')[1];
       if (sub) ext = '.' + sub.replace(/[^a-zA-Z0-9]/g, '');
     }
     const safeName = (filename || `upload${ext}`).replace(/[^a-zA-Z0-9._-]/g, '_');
     const buffer = bufferFromBase64(String(file));
-    const descriptor = await optimizeAndStore(buffer, safeName);
+    // Videos are stored raw (sharp can't process them); images go through the
+    // sharp→WebP optimizer exactly as before.
+    const descriptor = isVideoUpload(mime, safeName)
+      ? await storeVideo(buffer, safeName, mime)
+      : await optimizeAndStore(buffer, safeName);
     // file_url stays the canonical (card) URL so existing callers keep working.
     res.json({ file_url: descriptor.url, ...descriptor });
   } catch (e) { handleError(res, e); }
