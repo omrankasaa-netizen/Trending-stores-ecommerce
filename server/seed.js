@@ -470,10 +470,13 @@ function buildProductRecords() {
 }
 
 function seedCatalog() {
-  const existing = queryRecords('Category', {});
-  const haveSlugs = new Set(existing.map((c) => c.slug));
-  const toCreate = buildCategoryRecords().filter((c) => !haveSlugs.has(c.slug));
-  if (toCreate.length) bulkCreate('Category', toCreate);
+  // Categories are seeded strictly all-or-nothing: only when the table is
+  // completely EMPTY. We must never re-add individual "missing" defaults, or an
+  // admin's deletion would silently reappear on the next boot/reseed. Once the
+  // store has any categories, this leaves them exactly as the admin left them.
+  if (countRecords('Category') === 0) {
+    bulkCreate('Category', buildCategoryRecords());
+  }
 
   // Seed sample products only once (skip if any product already exists).
   if (countRecords('Product') > 0) return;

@@ -118,6 +118,54 @@ test('resolveLineItem: exact bundle uses the tier total (not per-unit)', () => {
   assert.equal(r.unit_price, round2(25 / 3));
 });
 
+// ── resolveLineItem: bundle multiplier (offer_quantity) ────────────────────
+test('resolveLineItem: offer_quantity multiplies whole bundles (price + pieces)', () => {
+  const product = { price: 4, tiers: [{ min_quantity: 5, total_price: 12 }] };
+  // 2 × (5 pieces for $12) → 10 pieces, $24.
+  const r = resolveLineItem(product, { offer_min_quantity: 5, offer_quantity: 2 });
+  assert.equal(r.quantity, 10);
+  assert.equal(r.line_total, 24);
+  assert.equal(r.base_line_total, 24);
+  assert.equal(r.tier_min_quantity, 5);
+  assert.equal(r.unit_price, round2(24 / 10)); // 2.4 per piece
+});
+
+test('resolveLineItem: offer_quantity defaults to 1 (single bundle unchanged)', () => {
+  const product = { price: 4, tiers: [{ min_quantity: 5, total_price: 12 }] };
+  const r = resolveLineItem(product, { offer_min_quantity: 5 });
+  assert.equal(r.quantity, 5);
+  assert.equal(r.line_total, 12);
+});
+
+test('resolveLineItem: bundle multiplier derived from piece quantity (server recompute)', () => {
+  // A stored order line persists quantity in PIECES (10) with no offer_quantity;
+  // the server recompute must still resolve to 2 bundles = $24, not $12.
+  const product = { price: 4, tiers: [{ min_quantity: 5, total_price: 12 }] };
+  const r = resolveLineItem(product, { offer_min_quantity: 5, quantity: 10 });
+  assert.equal(r.quantity, 10);
+  assert.equal(r.line_total, 24);
+});
+
+test('resolveLineItem: offer multiplier stacks markup per bundle', () => {
+  const product = { price: 4, markup_pct: 10, tiers: [{ min_quantity: 5, total_price: 12, free_shipping: true }] };
+  const r = resolveLineItem(product, { offer_min_quantity: 5, offer_quantity: 3 });
+  assert.equal(r.base_line_total, 36); // 12 × 3
+  assert.equal(r.line_total, round2(36 * 1.1)); // 39.6
+  assert.equal(r.quantity, 15);
+  assert.equal(r.free_shipping, true);
+});
+
+test('resolveLineItem: per-size offer honors the multiplier', () => {
+  const product = {
+    price: 10,
+    sizes: [{ id: 'm', label: 'Medium', price: 4.5, offers: [{ min_quantity: 3, total_price: 12 }] }],
+  };
+  const r = resolveLineItem(product, { size_id: 'm', offer_min_quantity: 3, offer_quantity: 2 });
+  assert.equal(r.quantity, 6);
+  assert.equal(r.line_total, 24);
+  assert.equal(r.size_label, 'Medium');
+});
+
 test('resolveLineItem: single unit uses size price', () => {
   const product = { price: 10, sizes: [{ id: 'l', label: 'L', price: 12, stock_quantity: 4 }] };
   const r = resolveLineItem(product, { size_id: 'l', quantity: 2 });
