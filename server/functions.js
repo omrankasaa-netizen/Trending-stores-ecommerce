@@ -141,6 +141,7 @@ export function recomputeOrder(orderData = {}) {
       size_id: item.size_id,
       quantity: item.quantity,
       offer_min_quantity: item.offer_min_quantity,
+      offer_quantity: item.offer_quantity,
     }, globalPct);
     subtotal += resolved.line_total;
     const freeDelivery = !!product.free_delivery || resolved.free_shipping;

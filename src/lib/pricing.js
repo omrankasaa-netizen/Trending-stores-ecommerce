@@ -114,37 +114,56 @@ export function findTierByMin(product, minQuantity, size = null) {
 // then apply markup. This is the single source of truth used by the storefront
 // (live price preview) and the server (authoritative recompute at checkout).
 //
-// selection: { size_id?, quantity?, offer_min_quantity? }
+// selection: { size_id?, quantity?, offer_min_quantity?, offer_quantity? }
+//   offer_quantity — how many copies of the chosen bundle offer to buy (the
+//   bundle multiplier). Defaults to 1. Only meaningful when an offer is chosen;
+//   e.g. offer_min_quantity=5 with offer_quantity=2 → 10 pieces at 2× the
+//   bundle price. Ignored for single-unit (no offer) purchases, which keep
+//   using `quantity`.
 // Returns a fully-resolved, markup-inclusive line descriptor.
 export function resolveLineItem(product, selection = {}, globalPct = 0) {
   const size = findSize(product, selection.size_id);
   const markupPct = markupPctForProduct(product, globalPct);
+  const unitBase = baseUnitPrice(product, size);
 
-  // An explicitly chosen offer fixes the quantity to the tier's bundle size.
-  // Offers resolve against the SELECTED SIZE first (per-size offers), falling
-  // back to product-level tiers when the size has none.
+  // An explicitly chosen offer fixes the per-bundle quantity to the tier's
+  // bundle size, multiplied by how many bundles the customer buys. Offers
+  // resolve against the SELECTED SIZE first (per-size offers), falling back to
+  // product-level tiers when the size has none.
   let tier = null;
   if (selection.offer_min_quantity != null && selection.offer_min_quantity !== '') {
     tier = findTierByMin(product, selection.offer_min_quantity, size);
   }
-  let quantity = Math.max(1, Math.floor(num(selection.quantity) || (tier ? Number(tier.min_quantity) : 1)));
-  if (tier) quantity = Number(tier.min_quantity);
-  if (!tier) tier = resolveTier(product, quantity, size);
 
-  const unitBase = baseUnitPrice(product, size);
-
+  let quantity;
   let baseLineTotal;
-  const tierTotal = tier ? num(tier.total_price) : null;
-  if (tier && tierTotal != null) {
-    if (quantity === Number(tier.min_quantity)) {
-      // Exact bundle → the tier's absolute total price.
-      baseLineTotal = tierTotal;
-    } else {
-      // Between/above defined tiers → per-unit-equivalent of the best tier.
-      baseLineTotal = (tierTotal / Number(tier.min_quantity)) * quantity;
+  if (tier) {
+    // Whole-bundle purchase: `bundles` copies of this exact offer. Prefer an
+    // explicit offer_quantity (the product page's bundle stepper); otherwise
+    // derive it from the piece quantity so a stored order line — which persists
+    // quantity in PIECES — recomputes to the same total on the server.
+    const min = Number(tier.min_quantity);
+    let bundles = num(selection.offer_quantity);
+    if (bundles == null) {
+      const q = num(selection.quantity);
+      bundles = q != null && min > 0 ? q / min : 1;
     }
+    bundles = Math.max(1, Math.floor(bundles));
+    quantity = min * bundles;
+    const tierTotal = num(tier.total_price);
+    baseLineTotal = tierTotal != null ? tierTotal * bundles : unitBase * quantity;
   } else {
-    baseLineTotal = unitBase * quantity;
+    // No explicit offer → plain quantity, auto-resolving a tier it may cross.
+    quantity = Math.max(1, Math.floor(num(selection.quantity) || 1));
+    tier = resolveTier(product, quantity, size);
+    const tierTotal = tier ? num(tier.total_price) : null;
+    if (tier && tierTotal != null) {
+      baseLineTotal = quantity === Number(tier.min_quantity)
+        ? tierTotal // Exact bundle → the tier's absolute total price.
+        : (tierTotal / Number(tier.min_quantity)) * quantity; // per-unit-equivalent
+    } else {
+      baseLineTotal = unitBase * quantity;
+    }
   }
   baseLineTotal = round2(baseLineTotal);
 

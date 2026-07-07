@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/useLanguage";
 import { useCart } from "@/components/useCart";
@@ -17,6 +17,7 @@ const WHATSAPP = "96181751841";
 
 export default function ProductDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { t, isRTL } = useLanguage();
   const { addToCart } = useCart();
   const { toast } = useToast();
@@ -69,10 +70,12 @@ export default function ProductDetail() {
   const selectedOffer = offerOptions.find((o) => o.key === selectedOfferKey) || offerOptions[0];
   const isBundle = selectedOffer.min_quantity > 1;
 
-  // Effective purchased quantity: a bundle offer fixes the quantity; single unit
-  // uses the qty stepper.
-  const effectiveQty = isBundle ? selectedOffer.min_quantity : qty;
-  const lineTotal = isBundle ? selectedOffer.total_price : selectedOffer.unit_price * qty;
+  // The qty stepper is a multiplier for BOTH modes. For a bundle offer it counts
+  // how many copies of the bundle to buy: effective pieces = bundle size × qty
+  // and the price scales by the same multiple. For a single unit it is just the
+  // piece count.
+  const effectiveQty = isBundle ? selectedOffer.min_quantity * qty : qty;
+  const lineTotal = isBundle ? selectedOffer.total_price * qty : selectedOffer.unit_price * qty;
   const perUnit = selectedOffer.unit_price;
 
   // In stock for the current selection (per-size when a size is chosen, else the
@@ -105,13 +108,25 @@ export default function ProductDetail() {
     free_shipping: !!selectedOffer.free_shipping,
   });
 
+  // Add the current selection to the cart. `effectiveQty` is always the PIECE
+  // count (bundle size × multiplier for offers, or the plain qty otherwise) and
+  // `perUnit` the per-piece price, so price × quantity yields the correct line
+  // total for single items and bundle multiples alike.
+  const addSelectionToCart = () => addToCart(product, effectiveQty, buildOpts());
+
   const handleAddToCart = () => {
-    if (isBundle) {
-      addToCart(product, 1, buildOpts());
-    } else {
-      addToCart(product, qty, buildOpts());
-    }
+    addSelectionToCart();
     toast({ title: t("Added to cart!", "تمت الإضافة للسلة!"), description: name });
+  };
+
+  // Buy Now must land the exact current selection in the cart BEFORE navigating.
+  // addToCart writes localStorage synchronously (see useCart.saveCart), so the
+  // /checkout route reads the persisted item even on slow devices — no reliance
+  // on a React state flush completing before navigation.
+  const handleBuyNow = () => {
+    if (outOfStock) return;
+    addSelectionToCart();
+    navigate("/checkout");
   };
 
   return (
@@ -304,23 +319,28 @@ export default function ProductDetail() {
               </div>
             )}
 
-            {/* Qty (only for single-unit purchases) */}
-            {!isBundle && (
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground mb-3" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                  {t("Quantity", "الكمية")}
-                </p>
-                <div className="flex items-center gap-3">
-                  <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => Math.max(1, q - 1))}>
-                    <Minus className="w-4 h-4" />
-                  </Button>
-                  <span className="text-xl font-black w-8 text-center">{qty}</span>
-                  <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => q + 1)}>
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
+            {/* Quantity stepper. For a bundle offer this multiplies whole
+                bundles (e.g. 2 × a 5-piece offer = 10 pieces); otherwise it is
+                the single-item piece count. */}
+            <div>
+              <p className="text-sm font-semibold text-muted-foreground mb-3" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                {isBundle ? t("Number of offers", "عدد العروض") : t("Quantity", "الكمية")}
+              </p>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => Math.max(1, q - 1))} aria-label={t("Decrease quantity", "إنقاص الكمية")}>
+                  <Minus className="w-4 h-4" />
+                </Button>
+                <span className="text-xl font-black w-8 text-center">{qty}</span>
+                <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => q + 1)} aria-label={t("Increase quantity", "زيادة الكمية")}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+                {isBundle && (
+                  <span className="text-sm text-muted-foreground" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                    {t(`= ${effectiveQty} pcs`, `= ${effectiveQty} قطعة`)}
+                  </span>
+                )}
               </div>
-            )}
+            </div>
 
             {/* CTAs */}
             <div className="flex flex-col gap-3">
@@ -340,11 +360,9 @@ export default function ProductDetail() {
                   <ShoppingCart className="w-5 h-5" />
                   {t("Add to Cart", "أضف للسلة")}
                 </Button>
-                <Link to="/checkout" className={`flex-1 ${outOfStock ? "pointer-events-none" : ""}`}>
-                  <Button disabled={outOfStock} className="w-full h-12 rounded-xl font-bold bg-primary hover:bg-primary/90 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                    {t("Buy Now", "اشترِ الآن")}
-                  </Button>
-                </Link>
+                <Button onClick={handleBuyNow} disabled={outOfStock} className="flex-1 h-12 rounded-xl font-bold bg-primary hover:bg-primary/90 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                  {t("Buy Now", "اشترِ الآن")}
+                </Button>
               </div>
             </div>
 
