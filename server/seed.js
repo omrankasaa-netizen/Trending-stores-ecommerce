@@ -46,16 +46,20 @@ function seedAdmin() {
   }
 }
 
-// 8 gadget categories — slugs match Shop.jsx category pills.
+// 8 gadget categories — slugs match Shop.jsx category pills. Category tile
+// images are repo-hosted under public/seed/ (served at site root each deploy),
+// mirroring the CATEGORY_IMAGES map in src/pages/Home.jsx. Categories without a
+// committed image (kids, offers) keep a blank image_url and fall back to a
+// gradient tile on the storefront.
 const CATEGORIES = [
-  { slug: 'garden', name: 'Garden & Irrigation', name_ar: 'حديقة وري' },
-  { slug: 'electronics', name: 'Electronics', name_ar: 'إلكترونيات' },
-  { slug: 'home', name: 'Home & Kitchen', name_ar: 'منزل ومطبخ' },
-  { slug: 'health', name: 'Health & Beauty', name_ar: 'صحة وجمال' },
-  { slug: 'kids', name: 'Kids & Baby', name_ar: 'أطفال وأمومة' },
-  { slug: 'pets', name: 'Pets', name_ar: 'حيوانات أليفة' },
-  { slug: 'tools', name: 'Tools', name_ar: 'أدوات' },
-  { slug: 'offers', name: 'Offers', name_ar: 'عروض' },
+  { slug: 'garden', name: 'Garden & Irrigation', name_ar: 'حديقة وري', image_url: '/seed/cat-garden.jpg' },
+  { slug: 'electronics', name: 'Electronics', name_ar: 'إلكترونيات', image_url: '/seed/cat-electronics.jpg' },
+  { slug: 'home', name: 'Home & Kitchen', name_ar: 'منزل ومطبخ', image_url: '/seed/cat-home.jpg' },
+  { slug: 'health', name: 'Health & Beauty', name_ar: 'صحة وجمال', image_url: '/seed/cat-health.jpg' },
+  { slug: 'kids', name: 'Kids & Baby', name_ar: 'أطفال وأمومة', image_url: '' },
+  { slug: 'pets', name: 'Pets', name_ar: 'حيوانات أليفة', image_url: '/seed/cat-pets.jpg' },
+  { slug: 'tools', name: 'Tools', name_ar: 'أدوات', image_url: '/seed/cat-tools.jpg' },
+  { slug: 'offers', name: 'Offers', name_ar: 'عروض', image_url: '' },
 ];
 
 // Curated showcase catalog for a hardware / tools / garden / pest-control shop.
@@ -453,7 +457,7 @@ function buildCategoryRecords() {
     slug: c.slug,
     name: c.name,
     name_ar: c.name_ar,
-    image_url: '',
+    image_url: c.image_url || '',
     display_order: i,
     is_visible: true,
   }));

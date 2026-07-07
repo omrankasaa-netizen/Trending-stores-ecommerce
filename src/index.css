@@ -167,6 +167,15 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Horizontal carousels: hide the scrollbar but keep native touch/swipe scroll */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Card hover glow */
 .card-glow:hover {
   box-shadow: 0 20px 60px -15px hsl(var(--primary) / 0.25);
