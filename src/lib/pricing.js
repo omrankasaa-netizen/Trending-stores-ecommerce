@@ -213,6 +213,33 @@ export function cartHasFreeDelivery(items = []) {
   );
 }
 
+// ── Availability (pure) ──────────────────────────────────────────────────────
+// Single source of truth for "is this in stock?", used by the card, the detail
+// page and (optionally) the server. The rule is robust to the per-size stock
+// model introduced by PRs #11/#14:
+//
+//   • If a specific size is passed → that size is in stock when its stock is
+//     untracked (null) or > 0.
+//   • Else if the product HAS sizes → in stock when ANY size is in stock.
+//   • Else (simple product, no sizes) → in stock when product.stock_quantity is
+//     untracked (null) or > 0.
+//
+// "Untracked" (null/'' → num() returns null) means the admin left stock blank,
+// which the app treats as available (consistent with decrementStockPatch and the
+// inventory screens). A real numeric 0 is out of stock. Strings coerce via num().
+export function sizeInStock(size) {
+  const q = num(size?.stock_quantity);
+  return q == null ? true : q > 0;
+}
+
+export function isInStock(product, size = null) {
+  if (size) return sizeInStock(size);
+  const sizes = getSizes(product);
+  if (sizes.length > 0) return sizes.some(sizeInStock);
+  const q = num(product?.stock_quantity);
+  return q == null ? true : q > 0;
+}
+
 // ── Per-size stock helpers (pure) ────────────────────────────────────────────
 // Compute the product patch needed to DECREMENT stock for one order line. When
 // the line targets a size, that size's pool is drawn down (clamped at 0);

@@ -10,7 +10,7 @@ import { MessageCircle, ShoppingCart, Truck, Shield, RotateCcw, ChevronRight, Pl
 import { useToast } from "@/components/ui/use-toast";
 import { formatPrice } from "@/lib/utils";
 import { getImagesForVariant, getImageFrameStyle, hasCrop } from "@/lib/productImages";
-import { getSizes, sizeId, findSize, buildOfferOptions } from "@/lib/pricing";
+import { getSizes, sizeId, findSize, buildOfferOptions, isInStock } from "@/lib/pricing";
 import { trackViewContent } from "@/lib/metaPixel";
 
 const WHATSAPP = "96181751841";
@@ -75,11 +75,10 @@ export default function ProductDetail() {
   const lineTotal = isBundle ? selectedOffer.total_price : selectedOffer.unit_price * qty;
   const perUnit = selectedOffer.unit_price;
 
-  // Stock for the currently selected size (falls back to product-level stock).
-  const selectedStock = selectedSize && selectedSize.stock_quantity != null
-    ? Number(selectedSize.stock_quantity)
-    : Number(product.stock_quantity);
-  const outOfStock = Number.isFinite(selectedStock) ? selectedStock <= 0 : false;
+  // In stock for the current selection (per-size when a size is chosen, else the
+  // product-level rule). Shared helper so card + detail agree. Untracked (blank)
+  // stock is treated as available.
+  const outOfStock = !isInStock(product, selectedSize);
 
   const basePrice = selectedSize && selectedSize.price != null ? Number(selectedSize.price) : Number(product.price);
   const discount = product.compare_at_price && product.compare_at_price > basePrice

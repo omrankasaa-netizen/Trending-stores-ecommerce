@@ -6,15 +6,20 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Persist next to the project root so data survives redeploys.
-const DB_PATH = process.env.MINIYO_DB_PATH || path.join(__dirname, '..', 'data.db');
+// Where the SQLite file lives. On hosts with an EPHEMERAL filesystem (e.g.
+// Railway without a mounted Volume) the repo/container disk is wiped on every
+// deploy, so the DB MUST be pointed at a persistent Volume via an env var.
+// DATABASE_PATH is the documented name (see RAILWAY_PERSISTENCE.md); MINIYO_DB_PATH
+// is kept as a backward-compatible alias. Local dev falls back to <root>/data.db.
+const DB_PATH = process.env.DATABASE_PATH || process.env.MINIYO_DB_PATH
+  || path.join(__dirname, '..', 'data.db');
 
 // Ensure the parent directory exists (e.g. a mounted volume at /data).
 try {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 } catch { /* dir may already exist */ }
 
-const onMountedVolume = !!process.env.MINIYO_DB_PATH;
+const onMountedVolume = !!(process.env.DATABASE_PATH || process.env.MINIYO_DB_PATH);
 const journalMode = process.env.MINIYO_JOURNAL_MODE || (onMountedVolume ? 'DELETE' : 'WAL');
 
 // Open the database. If a previous crash (e.g. WAL on an unsupported volume)
