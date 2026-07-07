@@ -20,6 +20,7 @@ export default function AdminSettings() {
   const [form, setForm] = useState({});
   const [uploading, setUploading] = useState(false);
   const [markupPct, setMarkupPct] = useState("");
+  const [reseeding, setReseeding] = useState(false);
   const { toast } = useToast();
   const { t, dir } = useAdminLanguage();
 
@@ -87,6 +88,28 @@ export default function AdminSettings() {
       toast({ title: t("Failed to upload logo", "تعذّر رفع الشعار"), description: err?.message || "", variant: "destructive" });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const reseedCatalog = async () => {
+    // Destructive: warn before wiping the live catalog.
+    if (!confirm(t(
+      "This will DELETE all current products and categories and restore the default showcase catalog. Continue?",
+      "سيؤدي هذا إلى حذف جميع المنتجات والفئات الحالية واستعادة كتالوج العرض الافتراضي. هل تريد المتابعة؟",
+    ))) return;
+    setReseeding(true);
+    try {
+      const summary = await base44.admin.reseedCatalog();
+      const p = summary?.products_seeded ?? 0;
+      const c = summary?.categories_seeded ?? 0;
+      toast({ title: t(`✅ Seeded ${p} products, ${c} categories`, `✅ تم تحميل ${p} منتج و ${c} فئة`) });
+    } catch (err) {
+      const msg = err?.status === 401 || err?.status === 403
+        ? t("Admin access required", "مطلوب صلاحية مشرف")
+        : (err?.message || t("Reseed failed", "فشلت إعادة التحميل"));
+      toast({ title: t("Failed to reseed catalog", "تعذّرت إعادة تحميل الكتالوج"), description: msg, variant: "destructive" });
+    } finally {
+      setReseeding(false);
     }
   };
 
@@ -212,6 +235,22 @@ export default function AdminSettings() {
         <Button onClick={saveAll} disabled={saving} className="w-full h-12 font-black text-base rounded-xl">
           {saving ? t("Saving...", "جاري الحفظ...") : t("💾 Save all settings", "💾 حفظ جميع الإعدادات")}
         </Button>
+
+        {/* Danger Zone — catalog maintenance */}
+        <Card className="border border-red-200 shadow-sm">
+          <CardHeader><CardTitle className="text-base font-black text-red-600">{t("Danger Zone", "منطقة الخطر")}</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label className="font-bold">{t("Reseed Catalog", "إعادة تحميل الكتالوج")}</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("Deletes all current products & categories and restores the default showcase catalog. This cannot be undone.", "يحذف جميع المنتجات والفئات الحالية ويستعيد كتالوج العرض الافتراضي. لا يمكن التراجع عن هذا الإجراء.")}
+              </p>
+            </div>
+            <Button onClick={reseedCatalog} disabled={reseeding} variant="destructive" className="w-full h-12 font-black text-base rounded-xl">
+              {reseeding ? t("Reseeding...", "جاري إعادة التحميل...") : t("Reseed Catalog", "إعادة تحميل الكتالوج")}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
