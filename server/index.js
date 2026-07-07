@@ -24,6 +24,7 @@ import { productContentId, META_CURRENCY } from '../src/lib/metaShared.js';
 import { sendEmail } from './email.js';
 import { runSeed } from './seed.js';
 import { optimizeAndStore, storeVideo, isVideoUpload, bufferFromBase64 } from './imageOptimize.js';
+import { getStorage, storageStatus } from './storage.js';
 
 // Build the verification-code email HTML (Trending Store branding).
 function otpEmailHtml(code) {
@@ -283,6 +284,25 @@ app.post('/api/upload', async (req, res) => {
       : await optimizeAndStore(buffer, safeName);
     // file_url stays the canonical (card) URL so existing callers keep working.
     res.json({ file_url: descriptor.url, ...descriptor });
+  } catch (e) { handleError(res, e); }
+});
+
+// ─── Storage diagnostics (admin) ────────────────────────────────────────────
+// Lets the owner confirm whether R2 object storage is active without reading
+// deploy logs. ADMIN-ONLY: same admin-tier gate as other admin endpoints.
+// Secret-safe: returns booleans, the names of any MISSING R2 vars, the bucket,
+// the public base URL, and the resolved endpoint — never any key/secret values.
+app.get('/api/storage-status', async (req, res) => {
+  try {
+    const user = getUserFromRequest(req);
+    if (!isAdmin(user)) {
+      return res.status(user ? 403 : 401).json({
+        error: user ? 'Forbidden: admin access required' : 'Authentication required',
+      });
+    }
+    // Report the REAL active backend (reflects any boot-time R2→local fallback).
+    const storage = await getStorage();
+    res.json(storageStatus(process.env, storage.name));
   } catch (e) { handleError(res, e); }
 });
 
