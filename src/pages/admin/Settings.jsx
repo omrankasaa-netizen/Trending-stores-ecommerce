@@ -7,6 +7,10 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
+// Hides the destructive "Reseed Catalog" button from the admin UI. The backend
+// endpoint / client method stay intact — flip to true to re-enable the button.
+const SHOW_RESEED_BUTTON = false;
+
 const SETTINGS_KEYS = [
   "store_name", "store_name_ar", "whatsapp_number", "facebook_url",
   "address", "address_ar", "delivery_fee", "delivery_coverage_ar", "delivery_coverage_en",
@@ -246,9 +250,11 @@ export default function AdminSettings() {
                 {t("Deletes all current products & categories and restores the default showcase catalog. This cannot be undone.", "يحذف جميع المنتجات والفئات الحالية ويستعيد كتالوج العرض الافتراضي. لا يمكن التراجع عن هذا الإجراء.")}
               </p>
             </div>
-            <Button onClick={reseedCatalog} disabled={reseeding} variant="destructive" className="w-full h-12 font-black text-base rounded-xl">
-              {reseeding ? t("Reseeding...", "جاري إعادة التحميل...") : t("Reseed Catalog", "إعادة تحميل الكتالوج")}
-            </Button>
+            {SHOW_RESEED_BUTTON && (
+              <Button onClick={reseedCatalog} disabled={reseeding} variant="destructive" className="w-full h-12 font-black text-base rounded-xl">
+                {reseeding ? t("Reseeding...", "جاري إعادة التحميل...") : t("Reseed Catalog", "إعادة تحميل الكتالوج")}
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
