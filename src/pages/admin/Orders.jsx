@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, Plus } from "lucide-react";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 const STATUS_CONFIG = {
@@ -56,6 +57,10 @@ export default function AdminOrders() {
           <h1 className="text-2xl font-black text-foreground">{t("Orders", "الطلبات")}</h1>
           <p className="text-muted-foreground text-sm mt-1">{t(`${orders.length} orders total`, `${orders.length} طلب إجمالاً`)}</p>
         </div>
+        <Button onClick={() => navigate("/admin/orders/new")} className="gap-2 rounded-xl h-11">
+          <Plus className="w-4 h-4" />
+          {t("New Order", "طلب جديد")}
+        </Button>
       </div>
 
       {/* Filters */}
