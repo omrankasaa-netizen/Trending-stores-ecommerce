@@ -4,6 +4,7 @@ import {
   markupPctForProduct, applyMarkup, getSizes, findSize, baseUnitPrice,
   getTiers, resolveTier, findTierByMin, resolveLineItem, buildOfferOptions,
   cartHasFreeDelivery, decrementStockPatch, restockStockPatch, isInStock,
+  orderDiscountAmount, computeManualOrderTotals,
 } from '../src/lib/pricing.js';
 
 // ── Availability (isInStock) ────────────────────────────────────────────────
@@ -337,6 +338,104 @@ test('decrement then restock returns the size pool to its original level', () =>
   const afterDec = { sizes: dec.sizes };
   const res = restockStockPatch(afterDec, 'm', 3);
   assert.equal(res.sizes.find((x) => x.id === 'm').stock_quantity, 8);
+});
+
+// ── Manual admin order pricing ──────────────────────────────────────────────
+// (1) auto-applied discount/offer default, (2) per-item override, (3) $/%
+// order discount clamped to subtotal, (4) delivery fee, (5) final-total override.
+
+test('orderDiscountAmount: fixed $ is clamped to [0, subtotal]', () => {
+  assert.equal(orderDiscountAmount(100, 'fixed', 30), 30);
+  assert.equal(orderDiscountAmount(100, 'fixed', 250), 100); // never exceeds subtotal
+  assert.equal(orderDiscountAmount(100, 'fixed', -5), 0);    // never negative
+  assert.equal(orderDiscountAmount(0, 'fixed', 10), 0);
+});
+
+test('orderDiscountAmount: percent is (value% of subtotal), clamped', () => {
+  assert.equal(orderDiscountAmount(200, 'percent', 10), 20);
+  assert.equal(orderDiscountAmount(200, 'percent', 150), 200); // 300 → clamped to subtotal
+  assert.equal(orderDiscountAmount(99.99, 'percent', 50), 50); // round2
+});
+
+test('auto-applied offer default: buildOfferOptions gives the bundle unit price', () => {
+  // Manual order default reuses the SAME pricing logic customers see: a 3-for-$25
+  // bundle → $8.33/unit default, size-aware and markup-inclusive.
+  const product = { price: 10, tiers: [{ min_quantity: 3, total_price: 25 }] };
+  const opts = buildOfferOptions(product, null, 0);
+  const bundle = opts.find((o) => o.min_quantity === 3);
+  const totals = computeManualOrderTotals({
+    items: [{ price: bundle.unit_price, quantity: bundle.quantity }],
+  });
+  assert.equal(totals.subtotal, 24.99); // 8.33 × 3 (matches the offered bundle)
+});
+
+test('computeManualOrderTotals: per-item override + auto total', () => {
+  // Admin overrides the unit price to 5 for 3 units; no discount, $4 delivery.
+  const totals = computeManualOrderTotals({
+    items: [{ price: 5, quantity: 3 }],
+    delivery_fee: 4,
+  });
+  assert.equal(totals.subtotal, 15);
+  assert.equal(totals.discount, 0);
+  assert.equal(totals.delivery_fee, 4);
+  assert.equal(totals.total, 19); // 15 - 0 + 4
+});
+
+test('computeManualOrderTotals: $ order discount reduces the total', () => {
+  const totals = computeManualOrderTotals({
+    items: [{ price: 10, quantity: 5 }], // subtotal 50
+    discount_type: 'fixed', discount_value: 12,
+    delivery_fee: 3,
+  });
+  assert.equal(totals.subtotal, 50);
+  assert.equal(totals.discount, 12);
+  assert.equal(totals.total, 41); // 50 - 12 + 3
+});
+
+test('computeManualOrderTotals: % order discount clamped to subtotal', () => {
+  const totals = computeManualOrderTotals({
+    items: [{ price: 20, quantity: 2 }], // subtotal 40
+    discount_type: 'percent', discount_value: 25,
+    delivery_fee: 0,
+  });
+  assert.equal(totals.discount, 10); // 25% of 40
+  assert.equal(totals.total, 30);
+});
+
+test('computeManualOrderTotals: delivery fee waived (0) is respected', () => {
+  const totals = computeManualOrderTotals({
+    items: [{ price: 10, quantity: 1 }],
+    delivery_fee: 0,
+  });
+  assert.equal(totals.delivery_fee, 0);
+  assert.equal(totals.total, 10);
+});
+
+test('computeManualOrderTotals: final-total override wins over auto total', () => {
+  const totals = computeManualOrderTotals({
+    items: [{ price: 10, quantity: 3 }], // subtotal 30
+    discount_type: 'fixed', discount_value: 5,
+    delivery_fee: 4,
+    total_override: true, total: 25,
+  });
+  assert.equal(totals.auto_total, 29); // 30 - 5 + 4
+  assert.equal(totals.total, 25);      // admin-entered total used verbatim
+});
+
+test('computeManualOrderTotals: override ignored when flag is off', () => {
+  const totals = computeManualOrderTotals({
+    items: [{ price: 10, quantity: 3 }],
+    total_override: false, total: 999,
+  });
+  assert.equal(totals.total, 30); // auto, not the stray 999
+});
+
+test('computeManualOrderTotals: override clamped to >= 0', () => {
+  const totals = computeManualOrderTotals({
+    items: [{ price: 10, quantity: 1 }],
+    total_override: true, total: -50,
+  });
+  assert.equal(totals.total, 0);
 });
 
 function round2(n) { return Math.round(n * 100) / 100; }

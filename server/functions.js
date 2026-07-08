@@ -3,7 +3,7 @@ import { sendEmail } from './email.js';
 import { sendCapiPurchase, isCapiConfigured } from './meta.js';
 import {
   resolveLineItem, decrementStockPatch, restockStockPatch,
-  getSizes, sizeId,
+  getSizes, sizeId, computeManualOrderTotals,
 } from '../src/lib/pricing.js';
 
 // ─── Brand / email constants ────────────────────────────────────────────────
@@ -118,9 +118,41 @@ function saveMarkupConfig(body) {
 // size pricing, quantity-tier (bundle) pricing and the hidden markup. Also
 // auto-waives delivery when any free-delivery item is in the cart. Preserves the
 // existing coupon discount (sanitized) and shipping behavior for normal carts.
-export function recomputeOrder(orderData = {}) {
+export function recomputeOrder(orderData = {}, { allowManual = false } = {}) {
   const items = Array.isArray(orderData.items) ? orderData.items : [];
   if (items.length === 0) return orderData;
+
+  // Manual admin orders: the operator has full pricing control (per-line unit
+  // prices, an order-level fixed/percent discount, an editable delivery fee and
+  // an optional final-total override). Trust the supplied line prices instead
+  // of re-deriving them from the catalog, but still recompute the money math
+  // server-side (from those trusted inputs) so the persisted subtotal/discount/
+  // total are always internally consistent and can never be tampered above what
+  // the fields imply. Gated on `allowManual` so ONLY an authenticated admin can
+  // take this path — a guest checkout can never set `manual` to dodge repricing.
+  if (allowManual && orderData.manual) {
+    const totals = computeManualOrderTotals({
+      items,
+      discount_type: orderData.discount_type,
+      discount_value: orderData.discount_value,
+      delivery_fee: orderData.delivery_fee,
+      total_override: !!orderData.total_override,
+      total: orderData.total,
+    });
+    return {
+      ...orderData,
+      manual: true,
+      subtotal: totals.subtotal,
+      discount: totals.discount,
+      discount_type: orderData.discount_type === 'percent' ? 'percent' : 'fixed',
+      discount_value: Math.max(0, Number(orderData.discount_value) || 0),
+      delivery_fee: totals.delivery_fee,
+      total_override: !!orderData.total_override,
+      free_delivery_applied: totals.delivery_fee <= 0,
+      total: totals.total,
+    };
+  }
+
   const globalPct = getGlobalMarkupPct();
 
   let subtotal = 0;

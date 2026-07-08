@@ -223,6 +223,62 @@ export function buildOfferOptions(product, size, globalPct = 0) {
   return options;
 }
 
+// ── Manual (admin-created) order pricing ─────────────────────────────────────
+// A manually-created admin order gives the operator full control over pricing:
+// per-line unit prices (already resolved/overridden in the UI), an order-level
+// discount (fixed $ OR percent %), an editable delivery fee, and an optional
+// final-total override. These pure helpers are the single source of truth for
+// that math, reused by the admin form (live preview) and the server (persisted
+// authoritative total). They intentionally trust the supplied line prices —
+// unlike resolveLineItem, which re-derives prices from catalog data.
+
+// Discount amount for a subtotal given a type ('fixed' | 'percent') and value.
+// Always clamped to [0, subtotal] so a discount can never exceed the subtotal
+// or go negative. A percent is (value% of subtotal); anything else is a flat $.
+export function orderDiscountAmount(subtotal, type, value) {
+  const sub = Math.max(0, num(subtotal) || 0);
+  const v = Math.max(0, num(value) || 0);
+  const raw = type === 'percent' ? sub * (v / 100) : v;
+  return round2(Math.min(sub, raw));
+}
+
+// Compute the full set of persisted totals for a manual order from its line
+// items and adjustment fields. `items` use their supplied `price` × `quantity`
+// (no catalog re-derivation). Returns subtotal, the resolved discount amount,
+// the (non-negative) delivery fee, and the final total. When `total_override`
+// is true and `total` is a finite number, that admin-entered total is used
+// verbatim (clamped to ≥ 0); otherwise total = subtotal − discount + delivery.
+export function computeManualOrderTotals({
+  items = [],
+  discount_type = 'fixed',
+  discount_value = 0,
+  delivery_fee = 0,
+  total_override = false,
+  total = null,
+} = {}) {
+  let subtotal = 0;
+  for (const it of Array.isArray(items) ? items : []) {
+    const qty = Math.max(0, Math.floor(num(it?.quantity) || 0));
+    const price = Math.max(0, num(it?.price) || 0);
+    subtotal += price * qty;
+  }
+  subtotal = round2(subtotal);
+  const discount = orderDiscountAmount(subtotal, discount_type, discount_value);
+  const fee = Math.max(0, num(delivery_fee) || 0);
+  const autoTotal = round2(Math.max(0, subtotal - discount) + fee);
+  const overrideVal = num(total);
+  const finalTotal = total_override && overrideVal != null
+    ? round2(Math.max(0, overrideVal))
+    : autoTotal;
+  return {
+    subtotal,
+    discount: round2(discount),
+    delivery_fee: round2(fee),
+    auto_total: autoTotal,
+    total: finalTotal,
+  };
+}
+
 // ── Free delivery ─────────────────────────────────────────────────────────--
 // A cart qualifies for free delivery when ANY line is flagged free_delivery
 // (product-level) or free_shipping (a bundle offer).

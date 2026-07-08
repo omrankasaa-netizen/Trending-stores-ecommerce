@@ -25,6 +25,7 @@ import AddressesPage from './pages/account/AddressesPage';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducts from './pages/admin/Products';
 import AdminOrders from './pages/admin/Orders';
+import OrderCreate from './pages/admin/OrderCreate';
 import OrderDetail from './pages/admin/OrderDetail';
 import AdminInventory from './pages/admin/Inventory';
 import AdminStockHistory from './pages/admin/StockHistory';
@@ -93,6 +94,7 @@ const AuthenticatedApp = () => {
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="orders" element={<AdminOrders />} />
+          <Route path="orders/new" element={<OrderCreate />} />
           <Route path="orders/:id" element={<OrderDetail />} />
           <Route path="products" element={<AdminProducts />} />
           <Route path="inventory" element={<AdminInventory />} />

@@ -262,10 +262,25 @@ export default function OrderDetail() {
                 <span className="text-muted-foreground">{t("Subtotal", "المجموع الفرعي")}</span>
                 <span className="font-bold">{formatPrice(order.subtotal)}</span>
               </div>
+              {Number(order.discount) > 0 && (
+                <div className="flex justify-between text-red-500 font-medium">
+                  <span>
+                    {t("Discount", "الخصم")}
+                    {order.discount_type === "percent" && order.discount_value ? ` (${order.discount_value}%)` : ""}
+                    {order.coupon_code ? ` (${order.coupon_code})` : ""}
+                  </span>
+                  <span>-{formatPrice(order.discount)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{t("Delivery Fee", "رسوم التوصيل")}{order.free_delivery_applied ? ` (${t("Free", "مجاني")})` : ""}</span>
                 <span className="font-bold">{formatPrice(order.delivery_fee)}</span>
               </div>
+              {order.total_override && (
+                <div className="flex justify-between text-amber-600 text-xs">
+                  <span>{t("Total manually overridden", "تم تجاوز الإجمالي يدوياً")}</span>
+                </div>
+              )}
               <div className="flex justify-between border-t border-gray-100 pt-2">
                 <span className="font-black text-base">{t("Amount to Collect", "المبلغ المطلوب تحصيله")}</span>
                 <span className="font-black text-xl text-primary">{formatPrice(order.total)}</span>

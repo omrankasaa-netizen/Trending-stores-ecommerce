@@ -514,7 +514,11 @@ app.post('/api/entities/:entity', ensureEntity, authorizeWrite('create'), (req, 
     let payload = req.body || {};
     // Orders: recompute every price server-side (size + tier + markup) and the
     // delivery/total, so a tampered client can never dictate what it pays.
-    if (req.params.entity === 'Order') payload = recomputeOrder(payload);
+    // Admins may create MANUAL orders with operator-controlled pricing; that
+    // path is unlocked only for an authenticated admin (never guest checkout).
+    if (req.params.entity === 'Order') {
+      payload = recomputeOrder(payload, { allowManual: isAdmin(getUserFromRequest(req)) });
+    }
     if (req.params.entity === 'Product') payload = sanitizeProductWrite(payload);
     const record = createRecord(req.params.entity, payload);
     // Ledger: initial stock for a new product.
