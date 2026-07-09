@@ -15,12 +15,14 @@ import { exportViaFunction, printTable } from "@/lib/exportCsv";
 import { useToast } from "@/components/ui/use-toast";
 import ProductImagesEditor from "@/components/admin/ProductImagesEditor";
 import { getProductImages } from "@/lib/productImages";
+import { totalStock, isInStock } from "@/lib/pricing";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 import { DEFAULT_CATEGORIES, mergeCategoryOptions } from "@/lib/categories";
 
 const EMPTY = {
   name: "", name_ar: "", short_description: "", short_description_ar: "",
   category: "garden", price: "", compare_at_price: "", stock_quantity: "",
+  unit_name_en: "", unit_name_ar: "",
   image_url: "", images: [], video_url: "", status: "active",
   is_featured: false, is_trending: false, is_bestseller: false, is_new: false,
   sizes: [], tiers: [], free_delivery: false, markup_pct: "",
@@ -228,6 +230,10 @@ export default function AdminProducts() {
       free_delivery: !!form.free_delivery,
       // Per-product markup override: empty → null (fall back to global markup).
       markup_pct: form.markup_pct !== "" && form.markup_pct != null ? Number(form.markup_pct) : null,
+      // Optional per-product unit name; trim so blank stays blank (falls back to
+      // the default "pc"/"قطعة" on the storefront).
+      unit_name_en: String(form.unit_name_en ?? "").trim(),
+      unit_name_ar: String(form.unit_name_ar ?? "").trim(),
     };
     try {
       if (editing) {
@@ -376,9 +382,9 @@ export default function AdminProducts() {
                   <div className={`absolute top-2 px-2 py-0.5 rounded-full text-xs font-bold ${isRTL ? "right-2" : "left-2"} ${p.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
                     {p.status === "active" ? t("Active", "نشط") : t("Hidden", "مخفي")}
                   </div>
-                  {p.stock_quantity != null && p.stock_quantity <= 5 && (
+                  {totalStock(p) != null && totalStock(p) <= 5 && (
                     <div className={`absolute bottom-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full ${isRTL ? "left-2" : "right-2"}`}>
-                      {p.stock_quantity === 0 ? t("Out!", "نفد!") : t(`${p.stock_quantity} pcs`, `${p.stock_quantity} قطعة`)}
+                      {!isInStock(p) ? t("Out!", "نفد!") : t(`${totalStock(p)} pcs`, `${totalStock(p)} قطعة`)}
                     </div>
                   )}
                 </div>
@@ -505,6 +511,25 @@ export default function AdminProducts() {
                 placeholder={t("e.g. 50", "مثال: 50")}
               />
               <p className="text-xs text-muted-foreground mt-1">{t("Leave empty if you don't want to track quantity. When sizes are added below, each size tracks its own stock.", "اتركه فارغاً إذا لا تريد تتبع الكمية. عند إضافة مقاسات بالأسفل، لكل مقاس مخزونه الخاص.")}</p>
+            </div>
+
+            {/* Unit name (optional): what a single unit is called on the storefront. */}
+            <div>
+              <Label className="font-bold">{t("Unit name", "اسم الوحدة")}</Label>
+              <div className="grid grid-cols-2 gap-4 mt-1">
+                <Input
+                  value={form.unit_name_en}
+                  onChange={e => f("unit_name_en", e.target.value)}
+                  placeholder={t("English (default: pc)", "الإنجليزية (افتراضي: pc)")}
+                />
+                <Input
+                  value={form.unit_name_ar}
+                  onChange={e => f("unit_name_ar", e.target.value)}
+                  placeholder={t("Arabic (default: قطعة)", "العربية (افتراضي: قطعة)")}
+                  style={{ direction: "rtl" }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{t("Optional. Name for a single unit shown on product pages (e.g. pack, pair, pieces). Leave empty to use \"pc\" / \"قطعة\".", "اختياري. اسم الوحدة الواحدة الظاهر في صفحات المنتج (مثل علبة، زوج، قطع). اتركه فارغاً لاستخدام \"pc\" / \"قطعة\".")}</p>
             </div>
 
             {/* Sizes (each with its own price + own stock pool) */}

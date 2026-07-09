@@ -31,6 +31,10 @@ async function request(method, url, body) {
     method,
     headers,
     credentials: 'include',
+    // Never serve API data from the browser HTTP cache: entity reads must always
+    // hit the network so the storefront reflects admin changes (new categories,
+    // products, stock) without a manual hard refresh.
+    cache: 'no-store',
     body: body != null ? JSON.stringify(body) : undefined,
   });
   let data = null;

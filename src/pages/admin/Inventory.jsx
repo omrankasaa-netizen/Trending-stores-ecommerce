@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Search, Check, Edit2, Download } from "lucide-react";
 import { exportViaFunction } from "@/lib/exportCsv";
+import { totalStock, isInStock } from "@/lib/pricing";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 export default function AdminInventory() {
@@ -46,19 +47,28 @@ export default function AdminInventory() {
     }
   };
 
+  // Size-aware stock class: a product tracked per-size sums its size stocks, so a
+  // product whose main quantity is blank/0 but has sizes in stock reads "ok",
+  // not "out". Untracked (null total) is always "ok".
+  const stockClass = (p) => {
+    if (!isInStock(p)) return "out";
+    const s = totalStock(p);
+    return s != null && s <= 5 ? "low" : "ok";
+  };
+
   const filtered = products.filter(p => {
     const q = search.toLowerCase();
     const matchSearch = !q || (p.name || "").toLowerCase().includes(q) || (p.name_ar || "").includes(search);
-    if (filter === "out") return matchSearch && p.stock_quantity === 0;
-    if (filter === "low") return matchSearch && p.stock_quantity != null && p.stock_quantity > 0 && p.stock_quantity <= 5;
-    if (filter === "ok") return matchSearch && (p.stock_quantity == null || p.stock_quantity > 5);
+    if (filter === "out") return matchSearch && stockClass(p) === "out";
+    if (filter === "low") return matchSearch && stockClass(p) === "low";
+    if (filter === "ok") return matchSearch && stockClass(p) === "ok";
     return matchSearch;
   });
 
   const stats = {
-    out: products.filter(p => p.stock_quantity === 0).length,
-    low: products.filter(p => p.stock_quantity != null && p.stock_quantity > 0 && p.stock_quantity <= 5).length,
-    ok: products.filter(p => p.stock_quantity == null || p.stock_quantity > 5).length,
+    out: products.filter(p => stockClass(p) === "out").length,
+    low: products.filter(p => stockClass(p) === "low").length,
+    ok: products.filter(p => stockClass(p) === "ok").length,
   };
 
   return (
@@ -120,9 +130,14 @@ export default function AdminInventory() {
           ) : (
             <div className="divide-y divide-gray-50">
               {filtered.map(p => {
-                const qty = p.stock_quantity;
-                const isOut = qty === 0;
-                const isLow = qty != null && qty > 0 && qty <= 5;
+                // Editable field is the product's main quantity; status + the
+                // displayed count use the size-aware total so sized products
+                // read correctly.
+                const mainQty = p.stock_quantity;
+                const qty = totalStock(p);
+                const cls = stockClass(p);
+                const isOut = cls === "out";
+                const isLow = cls === "low";
                 const isEditing = editingQty[p.id] !== undefined;
                 return (
                   <div key={p.id} className={`flex items-center gap-3 px-4 py-3 ${isOut ? "bg-red-50/50" : isLow ? "bg-amber-50/50" : ""}`}>
@@ -150,7 +165,7 @@ export default function AdminInventory() {
                           {isLow && <Badge className="bg-amber-500 text-white text-xs">{t(`${qty} pcs`, `${qty} قطعة`)}</Badge>}
                           {!isOut && !isLow && <span className="text-sm font-bold text-green-600">{qty != null ? t(`${qty} pcs`, `${qty} قطعة`) : t("Unlimited", "غير محدود")}</span>}
                           <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl"
-                            onClick={() => setEditingQty(prev => ({ ...prev, [p.id]: qty ?? 0 }))}>
+                            onClick={() => setEditingQty(prev => ({ ...prev, [p.id]: mainQty ?? 0 }))}>
                             <Edit2 className="w-4 h-4" />
                           </Button>
                         </>

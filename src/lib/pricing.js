@@ -315,6 +315,36 @@ export function isInStock(product, size = null) {
   return q == null ? true : q > 0;
 }
 
+// Total tracked stock across the per-size model, for admin "low stock" widgets.
+//   • With sizes → the SUM of tracked size stocks (untracked sizes contribute
+//     nothing); returns null only when every size is untracked.
+//   • Without sizes → the product-level stock_quantity (null when untracked).
+// Returning null means "untracked" (not a real 0), so low-stock screens can skip
+// it — the same convention isInStock uses.
+export function totalStock(product) {
+  const sizes = getSizes(product);
+  if (sizes.length > 0) {
+    let sum = null;
+    for (const s of sizes) {
+      const q = num(s.stock_quantity);
+      if (q != null) sum = (sum || 0) + q;
+    }
+    return sum;
+  }
+  return num(product?.stock_quantity);
+}
+
+// ── Unit name (pure) ─────────────────────────────────────────────────────────
+// The customer-facing name for a single unit ("pc"/"قطعة" by default). Products
+// may override it per language (unit_name_en / unit_name_ar) to read "pack",
+// "pair", "علبة", etc. Either language falls back to the other, then to the
+// hardcoded default, so products without the field render exactly as before.
+export function unitLabels(product) {
+  const en = String(product?.unit_name_en ?? '').trim();
+  const ar = String(product?.unit_name_ar ?? '').trim();
+  return { en: en || ar || 'pc', ar: ar || en || 'قطعة' };
+}
+
 // ── Per-size stock helpers (pure) ────────────────────────────────────────────
 // Compute the product patch needed to DECREMENT stock for one order line. When
 // the line targets a size, that size's pool is drawn down (clamped at 0);

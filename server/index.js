@@ -453,6 +453,9 @@ function applyProductMarkupForReader(product, user) {
 
 app.get('/api/entities/:entity', ensureEntity, authorizeRead, (req, res) => {
   try {
+    // Dynamic catalog data — never let a browser/proxy cache serve a stale copy,
+    // so admin changes appear on the storefront without a manual hard refresh.
+    res.set('Cache-Control', 'no-store');
     const user = getUserFromRequest(req);
     const { query, sort, limit } = parseListParams(req);
     const isProduct = req.params.entity === 'Product';
@@ -465,6 +468,7 @@ app.get('/api/entities/:entity', ensureEntity, authorizeRead, (req, res) => {
 
 app.get('/api/entities/:entity/:id', ensureEntity, authorizeRead, (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const user = getUserFromRequest(req);
     const record = getRecord(req.params.entity, req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
