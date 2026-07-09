@@ -28,6 +28,12 @@
     "stock_quantity": {
       "type": "number"
     },
+    "unit_name_en": {
+      "type": "string"
+    },
+    "unit_name_ar": {
+      "type": "string"
+    },
     "image_url": {
       "type": "string"
     },

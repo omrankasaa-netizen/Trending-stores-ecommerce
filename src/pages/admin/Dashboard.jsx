@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
+import { totalStock, isInStock } from "@/lib/pricing";
 import {
   ShoppingBag, Clock, CheckCircle2, AlertTriangle, Plus, Eye,
   Home, Tag, ArrowLeft, Truck
@@ -40,15 +41,19 @@ export default function AdminDashboard() {
   const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const thisWeek = orders.filter(o => new Date(o.created_date) >= weekAgo);
 
+  // Low-stock uses the per-size aware total: a product tracked at ≤5 total units
+  // (summed across sizes when present). Untracked stock (null) is never "low".
+  const isLowStock = (p) => { const s = totalStock(p); return s != null && s <= 5; };
+
   const stats = {
     total: orders.length,
     pending: orders.filter(o => o.status === "pending").length,
     delivered: orders.filter(o => o.status === "delivered").length,
     thisWeek: thisWeek.length,
-    lowStock: products.filter(p => p.stock_quantity != null && p.stock_quantity <= 5).length,
+    lowStock: products.filter(isLowStock).length,
   };
 
-  const lowStockProducts = products.filter(p => p.stock_quantity != null && p.stock_quantity <= 5).slice(0, 8);
+  const lowStockProducts = products.filter(isLowStock).slice(0, 8);
   const recentOrders = orders.slice(0, 10);
   const productName = (p) => lang === "ar" ? (p.name_ar || p.name) : (p.name || p.name_ar);
 
@@ -203,8 +208,8 @@ export default function AdminDashboard() {
                       />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold truncate">{productName(p)}</div>
-                        <div className={`text-xs font-bold ${p.stock_quantity === 0 ? "text-red-600" : "text-amber-600"}`}>
-                          {p.stock_quantity === 0 ? t("Out of stock!", "نفد المخزون!") : t(`${p.stock_quantity} left`, `${p.stock_quantity} قطعة متبقية`)}
+                        <div className={`text-xs font-bold ${!isInStock(p) ? "text-red-600" : "text-amber-600"}`}>
+                          {!isInStock(p) ? t("Out of stock!", "نفد المخزون!") : t(`${totalStock(p)} left`, `${totalStock(p)} قطعة متبقية`)}
                         </div>
                       </div>
                     </Link>

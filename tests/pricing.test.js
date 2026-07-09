@@ -4,7 +4,7 @@ import {
   markupPctForProduct, applyMarkup, getSizes, findSize, baseUnitPrice,
   getTiers, resolveTier, findTierByMin, resolveLineItem, buildOfferOptions,
   cartHasFreeDelivery, decrementStockPatch, restockStockPatch, isInStock,
-  orderDiscountAmount, computeManualOrderTotals,
+  orderDiscountAmount, computeManualOrderTotals, totalStock, unitLabels,
 } from '../src/lib/pricing.js';
 
 // ── Availability (isInStock) ────────────────────────────────────────────────
@@ -50,6 +50,53 @@ test('isInStock: a specific selected size overrides the product rule', () => {
   assert.equal(isInStock(product, product.sizes[1]), true);  // M available
   // A size with untracked stock counts as available.
   assert.equal(isInStock(product, { label: 'L', stock_quantity: null }), true);
+});
+
+// ── Total stock (per-size aware, for admin low-stock widgets) ───────────────
+test('totalStock: simple product returns its tracked quantity (null when blank)', () => {
+  assert.equal(totalStock({ stock_quantity: 7 }), 7);
+  assert.equal(totalStock({ stock_quantity: 0 }), 0);
+  assert.equal(totalStock({ stock_quantity: null }), null);
+  assert.equal(totalStock({}), null);
+});
+
+test('totalStock: sized product sums size stocks (the Rat Trap case)', () => {
+  // Main quantity intentionally 0 (per-size tracking); sizes hold the real stock.
+  const product = {
+    stock_quantity: 0,
+    sizes: [
+      { label: 'Small', stock_quantity: 4 },
+      { label: 'Medium', stock_quantity: 7 },
+    ],
+  };
+  assert.equal(totalStock(product), 11); // NOT 0 → dashboard must not flag it
+  assert.equal(isInStock(product), true);
+});
+
+test('totalStock: sized product is 0 only when every tracked size is 0', () => {
+  const product = { sizes: [{ label: 'S', stock_quantity: 0 }, { label: 'M', stock_quantity: 0 }] };
+  assert.equal(totalStock(product), 0);
+  assert.equal(isInStock(product), false);
+});
+
+test('totalStock: sizes with all-untracked stock return null (untracked)', () => {
+  const product = { sizes: [{ label: 'S' }, { label: 'M', stock_quantity: null }] };
+  assert.equal(totalStock(product), null);
+});
+
+// ── Unit name (fix 1: editable per-product unit label) ──────────────────────
+test('unitLabels: falls back to pc/قطعة when unset', () => {
+  assert.deepEqual(unitLabels({}), { en: 'pc', ar: 'قطعة' });
+  assert.deepEqual(unitLabels({ unit_name_en: '', unit_name_ar: '   ' }), { en: 'pc', ar: 'قطعة' });
+  assert.deepEqual(unitLabels(null), { en: 'pc', ar: 'قطعة' });
+});
+
+test('unitLabels: uses provided names and cross-language fallback', () => {
+  assert.deepEqual(unitLabels({ unit_name_en: 'pack', unit_name_ar: 'علبة' }), { en: 'pack', ar: 'علبة' });
+  // Only one language set → the other falls back to it (not the hardcoded default).
+  assert.deepEqual(unitLabels({ unit_name_en: 'pair' }), { en: 'pair', ar: 'pair' });
+  assert.deepEqual(unitLabels({ unit_name_ar: 'زوج' }), { en: 'زوج', ar: 'زوج' });
+  assert.deepEqual(unitLabels({ unit_name_en: '  box  ' }), { en: 'box', ar: 'box' });
 });
 
 // ── Markup ────────────────────────────────────────────────────────────────

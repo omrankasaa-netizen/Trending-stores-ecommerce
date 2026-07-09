@@ -10,7 +10,7 @@ import { MessageCircle, ShoppingCart, Truck, Shield, RotateCcw, ChevronRight, Pl
 import { useToast } from "@/components/ui/use-toast";
 import { formatPrice } from "@/lib/utils";
 import { getImagesForVariant, getImageFrameStyle, hasCrop } from "@/lib/productImages";
-import { getSizes, sizeId, findSize, buildOfferOptions, isInStock } from "@/lib/pricing";
+import { getSizes, sizeId, findSize, buildOfferOptions, isInStock, unitLabels } from "@/lib/pricing";
 import { trackViewContent } from "@/lib/metaPixel";
 
 const WHATSAPP = "96181751841";
@@ -61,6 +61,10 @@ export default function ProductDetail() {
   const name = isRTL ? (product.name_ar || product.name) : product.name;
   const desc = isRTL ? (product.short_description_ar || product.short_description) : product.short_description;
 
+  // Per-product unit name ("pc"/"قطعة" by default) used for single-unit and
+  // piece-count labels below.
+  const unit = unitLabels(product);
+
   // Sizes & offers. Prices from the API are already markup-inclusive for the
   // storefront reader, so we resolve options with the default (0%) global pct to
   // avoid double-applying markup client-side.
@@ -101,8 +105,8 @@ export default function ProductDetail() {
     size_label: selectedSize?.label || "",
     size_label_ar: selectedSize?.label_ar || "",
     offer_min_quantity: isBundle ? selectedOffer.min_quantity : "",
-    offer_label: isBundle ? (selectedOffer.label || `${selectedOffer.min_quantity} pcs`) : "",
-    offer_label_ar: isBundle ? (selectedOffer.label_ar || `${selectedOffer.min_quantity} قطع`) : "",
+    offer_label: isBundle ? (selectedOffer.label || `${selectedOffer.min_quantity} ${unit.en}`) : "",
+    offer_label_ar: isBundle ? (selectedOffer.label_ar || `${selectedOffer.min_quantity} ${unit.ar}`) : "",
     unit_price: perUnit,
     free_delivery: !!product.free_delivery,
     free_shipping: !!selectedOffer.free_shipping,
@@ -238,7 +242,7 @@ export default function ProductDetail() {
             </div>
             {isBundle && (
               <p className="text-sm text-muted-foreground -mt-3" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                {t(`${formatPrice(perUnit)} per piece`, `${formatPrice(perUnit)} للقطعة`)}
+                {t(`${formatPrice(perUnit)} per ${unit.en}`, `${formatPrice(perUnit)} لكل ${unit.ar}`)}
               </p>
             )}
             {(product.free_delivery || selectedOffer.free_shipping) && (
@@ -295,8 +299,8 @@ export default function ProductDetail() {
                     const active = o.key === selectedOfferKey;
                     const custom = isRTL ? o.label_ar : o.label;
                     const qtyLabel = o.min_quantity > 1
-                      ? t(`${o.min_quantity} pcs`, `${o.min_quantity} قطع`)
-                      : t("1 pc", "قطعة واحدة");
+                      ? t(`${o.min_quantity} ${unit.en}`, `${o.min_quantity} ${unit.ar}`)
+                      : t(`1 ${unit.en}`, `${unit.ar} واحدة`);
                     return (
                       <button
                         key={o.key}
@@ -310,7 +314,7 @@ export default function ProductDetail() {
                         </span>
                         <span className="flex items-center gap-2">
                           <span className="text-primary">{formatPrice(o.total_price)}</span>
-                          {o.min_quantity > 1 && <span className="text-xs text-muted-foreground">({formatPrice(o.unit_price)}{t("/pc", "/قطعة")})</span>}
+                          {o.min_quantity > 1 && <span className="text-xs text-muted-foreground">({formatPrice(o.unit_price)}{t(`/${unit.en}`, `/${unit.ar}`)})</span>}
                         </span>
                       </button>
                     );
@@ -336,7 +340,7 @@ export default function ProductDetail() {
                 </Button>
                 {isBundle && (
                   <span className="text-sm text-muted-foreground" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                    {t(`= ${effectiveQty} pcs`, `= ${effectiveQty} قطعة`)}
+                    {t(`= ${effectiveQty} ${unit.en}`, `= ${effectiveQty} ${unit.ar}`)}
                   </span>
                 )}
               </div>
