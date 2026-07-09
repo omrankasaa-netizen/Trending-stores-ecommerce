@@ -31,6 +31,15 @@ export default function ProductDetail() {
   const [selectedOfferKey, setSelectedOfferKey] = useState("single");
 
   useEffect(() => {
+    // Navigating between two /product/:id routes (e.g. via the "You may also
+    // like" cards) reuses this mounted component, so reset transient selection
+    // state for the incoming product instead of carrying over the previous one.
+    setLoading(true);
+    setActiveImg(0);
+    setShowVideo(false);
+    setQty(1);
+    setSelectedOfferKey("single");
+    setSelectedSizeId("");
     base44.entities.Product.filter({ id }).then(([p]) => {
       setProduct(p);
       setLoading(false);

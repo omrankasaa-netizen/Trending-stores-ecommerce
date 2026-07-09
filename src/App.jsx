@@ -40,6 +40,7 @@ import AdminCustomers from './pages/admin/Customers';
 import AdminFinances from './pages/admin/Finances';
 import AdminLayout from './components/admin/AdminLayout';
 import Layout from './components/Layout';
+import ScrollToTop from './components/ScrollToTop';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -127,6 +128,7 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
+          <ScrollToTop />
           <AuthenticatedApp />
         </Router>
         <Toaster />
