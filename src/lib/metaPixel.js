@@ -106,22 +106,30 @@ export function trackPageView() {
   track("PageView");
 }
 
-export function trackViewContent(product, { value } = {}) {
+// The three browsing events generate (or accept) an eventId and RETURN it, so
+// the caller can hand the SAME id to the server-side CAPI twin and Meta
+// deduplicates the pair. Returns undefined when there is nothing to track (no
+// content id) — the caller then skips the server event too. Purchase keeps its
+// own signature/behavior below (unchanged).
+export function trackViewContent(product, { value, eventId } = {}) {
   const id = productContentId(product);
-  if (!id) return;
+  if (!id) return undefined;
+  const evtId = eventId || newEventId();
   track("ViewContent", {
     content_ids: [id],
     content_type: "product",
     content_name: product?.name || product?.name_ar || undefined,
     currency: META_CURRENCY,
     value: Number(value ?? product?.price) || undefined,
-  });
+  }, evtId);
+  return evtId;
 }
 
-export function trackAddToCart({ product, quantity = 1, value }) {
+export function trackAddToCart({ product, quantity = 1, value, eventId }) {
   const id = productContentId(product);
-  if (!id) return;
+  if (!id) return undefined;
   const unit = Number(value ?? product?.price) || 0;
+  const evtId = eventId || newEventId();
   track("AddToCart", {
     content_ids: [id],
     content_type: "product",
@@ -129,12 +137,14 @@ export function trackAddToCart({ product, quantity = 1, value }) {
     currency: META_CURRENCY,
     value: unit * Math.max(1, Number(quantity) || 1),
     contents: [{ id, quantity: Math.max(1, Number(quantity) || 1), item_price: unit }],
-  });
+  }, evtId);
+  return evtId;
 }
 
-export function trackInitiateCheckout({ items, value }) {
+export function trackInitiateCheckout({ items, value, eventId }) {
   const { contents, content_ids } = buildContents(items);
-  if (content_ids.length === 0) return;
+  if (content_ids.length === 0) return undefined;
+  const evtId = eventId || newEventId();
   track("InitiateCheckout", {
     content_ids,
     content_type: "product",
@@ -142,7 +152,8 @@ export function trackInitiateCheckout({ items, value }) {
     num_items: contents.reduce((s, c) => s + (c.quantity || 1), 0),
     currency: META_CURRENCY,
     value: Number(value) || undefined,
-  });
+  }, evtId);
+  return evtId;
 }
 
 // Fire the browser Purchase event. Pass the SAME eventId to the server CAPI call

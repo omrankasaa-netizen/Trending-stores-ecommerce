@@ -243,10 +243,23 @@ app.post('/api/users/invite', (req, res) => {
 });
 
 // ─── Functions ────────────────────────────────────────────────────────────────
+// Non-PII request context handed to functions that need Meta match keys
+// (metaTrackEvent). IP prefers the left-most x-forwarded-for hop behind a proxy;
+// _fbp/_fbc are Meta's own first-party cookies. Never carries email/phone.
+function requestContext(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return {
+    ip: fwd || req.socket?.remoteAddress || '',
+    userAgent: req.headers['user-agent'] || '',
+    fbp: req.cookies?._fbp || '',
+    fbc: req.cookies?._fbc || '',
+  };
+}
+
 app.post('/api/functions/:name', async (req, res) => {
   try {
     const user = getUserFromRequest(req);
-    const result = await invokeFunction(req.params.name, req.body || {}, user);
+    const result = await invokeFunction(req.params.name, req.body || {}, user, requestContext(req));
     if (result && typeof result === 'object' && result._status) {
       const { _status, ...rest } = result;
       return res.status(_status).json({ data: rest });

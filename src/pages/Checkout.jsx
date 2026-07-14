@@ -14,6 +14,8 @@ import { MessageCircle, CheckCircle2, Truck, ShoppingBag, Tag, MapPin } from "lu
 import { formatPrice } from "@/lib/utils";
 import { cartHasFreeDelivery } from "@/lib/pricing";
 import { trackInitiateCheckout, trackPurchase, newEventId } from "@/lib/metaPixel";
+import { sendServerCapiEvent } from "@/lib/metaServer";
+import { buildContents } from "@/lib/metaShared";
 
 const WHATSAPP_FALLBACK = "96181751841";
 function genOrderNum() { return "TS-" + Date.now().toString().slice(-6); }
@@ -97,7 +99,18 @@ export default function Checkout() {
   // Meta InitiateCheckout — fire once when the checkout page loads with items.
   // No-op without pixel id / consent.
   useEffect(() => {
-    if (cart.length > 0) trackInitiateCheckout({ items: cart, value: total });
+    if (cart.length > 0) {
+      // Browser Pixel + server-side CAPI twin share one event_id for dedup.
+      const eventId = trackInitiateCheckout({ items: cart, value: total });
+      const { contents, content_ids } = buildContents(cart);
+      sendServerCapiEvent({
+        event_name: "InitiateCheckout",
+        event_id: eventId,
+        content_ids,
+        contents,
+        value: Number(total) || undefined,
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -1,6 +1,8 @@
 import { getRecord, createRecord, updateRecord, deleteRecord, queryRecords, nowIso, kvGet, kvSet } from './db.js';
 import { sendEmail } from './email.js';
-import { sendCapiPurchase, isCapiConfigured } from './meta.js';
+import {
+  sendCapiPurchase, sendCapiEvent, isCapiConfigured, isEventAllowed, buildRequestUserData,
+} from './meta.js';
 import {
   resolveLineItem, decrementStockPatch, restockStockPatch,
   getSizes, sizeId, computeManualOrderTotals,
@@ -921,10 +923,35 @@ async function metaTrackPurchase({ order_id, event_id }) {
   return result;
 }
 
+// ─── Meta Conversions API — server-side browsing-event twins ─────────────────
+// Server-side ViewContent / AddToCart / InitiateCheckout that share the browser
+// Pixel's event_id so Meta deduplicates the browser+server pair into ONE event
+// (better match quality + resilience to ad-blockers). Purchase is intentionally
+// NOT accepted here — it keeps its dedicated authoritative path (metaTrackPurchase).
+// user_data is derived from the REQUEST context (ip / user-agent / _fbp / _fbc)
+// on the server; no email/phone is ever accepted from the client for these.
+// Public because it is triggered by the (guest) storefront. Silent no-op when
+// Meta env vars are unset. Fire-and-forget: never throws, never blocks the UI.
+async function metaTrackEvent({ event_name, event_id, source_url, content_ids, contents, value } = {}, _user, ctx = {}) {
+  if (!isEventAllowed(event_name)) return { _status: 400, error: 'Invalid or unsupported event_name' };
+  if (!isCapiConfigured()) return { ok: true, skipped: true, reason: 'not_configured' };
+  const userData = buildRequestUserData(ctx);
+  return await sendCapiEvent({
+    eventName: event_name,
+    eventId: event_id,
+    sourceUrl: source_url,
+    contents,
+    contentIds: content_ids,
+    value,
+    userData,
+  });
+}
+
 const REGISTRY = {
   commitStock,
   cancelOrder,
   metaTrackPurchase,
+  metaTrackEvent,
   getMarkupConfig,
   saveMarkupConfig,
   getMyOrders,
@@ -959,6 +986,7 @@ const REGISTRY = {
 const GUARDS = {
   commitStock: 'public',
   metaTrackPurchase: 'public',
+  metaTrackEvent: 'public',
   cancelOrder: 'admin',
   getMarkupConfig: 'admin',
   saveMarkupConfig: 'admin',
@@ -997,7 +1025,7 @@ export function authorizeFunction(level, user) {
   return { _status: 403, error: 'Forbidden' };
 }
 
-export async function invokeFunction(name, body, user) {
+export async function invokeFunction(name, body, user, ctx) {
   const fn = REGISTRY[name];
   if (!fn) {
     const err = new Error(`Unknown function: ${name}`);
@@ -1006,5 +1034,5 @@ export async function invokeFunction(name, body, user) {
   }
   const denied = authorizeFunction(GUARDS[name] || 'admin', user);
   if (denied) return denied;
-  return await fn(body || {}, user);
+  return await fn(body || {}, user, ctx || {});
 }
