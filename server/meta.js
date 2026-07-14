@@ -12,9 +12,18 @@
 //    Meta's requirements.
 
 import crypto from "node:crypto";
-import { META_CURRENCY, buildContents } from "../src/lib/metaShared.js";
+import { META_CURRENCY, buildContents, normalizeContentId } from "../src/lib/metaShared.js";
 
 const GRAPH_VERSION = "v19.0";
+
+// The only non-Purchase events allowed on the generic CAPI path. Purchase has a
+// dedicated authoritative path (sendCapiPurchase) and must NEVER be accepted
+// here — that keeps the order total / idempotency guarantees in one place.
+const ALLOWED_EVENTS = new Set(["ViewContent", "AddToCart", "InitiateCheckout"]);
+
+export function isEventAllowed(eventName) {
+  return ALLOWED_EVENTS.has(eventName);
+}
 
 function pixelId() {
   return process.env.TRENDING_META_PIXEL_ID || "";
@@ -56,6 +65,84 @@ function userDataFromOrder(order) {
   if (fn) ud.fn = [fn];
   if (ct) ud.ct = [ct];
   return ud;
+}
+
+// Build the CAPI user_data block for a non-Purchase browsing event from the
+// REQUEST context only. These are Meta's non-PII match keys — the client IP and
+// user-agent (used as-is, never hashed) and the _fbp/_fbc browser cookies. We
+// deliberately do NOT accept email/phone for these events, so nothing here is
+// PII and nothing needs hashing. Empty fields are omitted.
+export function buildRequestUserData(ctx = {}) {
+  const ud = {};
+  if (ctx.ip) ud.client_ip_address = String(ctx.ip);
+  if (ctx.userAgent) ud.client_user_agent = String(ctx.userAgent);
+  if (ctx.fbp) ud.fbp = String(ctx.fbp);
+  if (ctx.fbc) ud.fbc = String(ctx.fbc);
+  return ud;
+}
+
+// Generic server-side CAPI event for the three browsing events. Mirrors the
+// Purchase envelope (event_id shared with the browser Pixel → Meta dedupes the
+// pair) but carries only non-PII user_data. content_ids are re-normalized here
+// (same rule as the catalog feed) so they always match. Returns a plain status
+// object; never throws; silent no-op when Meta env is unset. Purchase is
+// rejected — it stays on the dedicated authoritative path.
+export async function sendCapiEvent({
+  eventName, eventId, sourceUrl, contents, contentIds, value, userData,
+} = {}) {
+  if (!isCapiConfigured()) return { ok: false, skipped: true, reason: "not_configured" };
+  if (!isEventAllowed(eventName)) return { ok: false, skipped: true, reason: "event_not_allowed" };
+
+  const ids = (Array.isArray(contentIds) ? contentIds : [])
+    .map(normalizeContentId)
+    .filter(Boolean);
+  const normContents = (Array.isArray(contents) ? contents : [])
+    .map((c) => {
+      const id = normalizeContentId(c?.id);
+      if (!id) return null;
+      const out = { id, quantity: Math.max(1, Number(c?.quantity) || 1) };
+      const price = Number(c?.item_price);
+      if (Number.isFinite(price)) out.item_price = price;
+      return out;
+    })
+    .filter(Boolean);
+
+  const custom_data = { content_type: "product" };
+  if (ids.length) custom_data.content_ids = ids;
+  if (normContents.length) custom_data.contents = normContents;
+  const numValue = Number(value);
+  if (Number.isFinite(numValue)) {
+    custom_data.value = numValue;
+    custom_data.currency = META_CURRENCY;
+  }
+
+  const event = {
+    event_name: eventName,
+    event_time: Math.floor(Date.now() / 1000),
+    event_id: eventId || undefined,
+    action_source: "website",
+    user_data: userData || {},
+    custom_data,
+  };
+  if (sourceUrl) event.event_source_url = sourceUrl;
+
+  const payload = { data: [event] };
+  const code = testEventCode();
+  if (code) payload.test_event_code = code;
+
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${pixelId()}/events?access_token=${encodeURIComponent(accessToken())}`;
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, status: resp.status, error: json?.error?.message || "CAPI error" };
+    return { ok: true, events_received: json?.events_received };
+  } catch (e) {
+    return { ok: false, error: e?.message || "CAPI request failed" };
+  }
 }
 
 // Send a server-side Purchase event for an order. Returns a plain status object;

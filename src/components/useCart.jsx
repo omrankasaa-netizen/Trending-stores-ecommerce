@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { trackAddToCart } from "@/lib/metaPixel";
+import { sendServerCapiEvent } from "@/lib/metaServer";
+import { productContentId } from "@/lib/metaShared";
 
 const CART_KEY = "ts_cart";
 
@@ -73,8 +75,17 @@ export function useCart() {
     }
     // Central Meta AddToCart — every add-to-cart path funnels through here, so
     // it fires once regardless of which page triggered it. No-op without pixel
-    // id / consent.
-    trackAddToCart({ product: { ...product, price: unitPrice }, quantity: qty, value: unitPrice });
+    // id / consent. The server-side CAPI twin reuses the SAME event_id for dedup.
+    const eventId = trackAddToCart({ product: { ...product, price: unitPrice }, quantity: qty, value: unitPrice });
+    const cid = productContentId(product);
+    const q = Math.max(1, Number(qty) || 1);
+    sendServerCapiEvent({
+      event_name: "AddToCart",
+      event_id: eventId,
+      content_ids: cid ? [cid] : [],
+      contents: cid ? [{ id: cid, quantity: q, item_price: unitPrice }] : [],
+      value: unitPrice * q,
+    });
   }, [saveCart]);
 
   const removeFromCart = useCallback((key) => {

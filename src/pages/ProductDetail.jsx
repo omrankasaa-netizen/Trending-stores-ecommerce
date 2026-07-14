@@ -12,6 +12,8 @@ import { formatPrice } from "@/lib/utils";
 import { getImagesForVariant, getImageFrameStyle, hasCrop } from "@/lib/productImages";
 import { getSizes, sizeId, findSize, buildOfferOptions, isInStock, unitLabels } from "@/lib/pricing";
 import { trackViewContent } from "@/lib/metaPixel";
+import { sendServerCapiEvent } from "@/lib/metaServer";
+import { productContentId } from "@/lib/metaShared";
 
 const WHATSAPP = "96181751841";
 
@@ -43,7 +45,18 @@ export default function ProductDetail() {
     base44.entities.Product.filter({ id }).then(([p]) => {
       setProduct(p);
       setLoading(false);
-      if (p) trackViewContent(p, { value: p.price });
+      if (p) {
+        // Fire the browser Pixel and the server-side CAPI twin with the SAME
+        // event_id so Meta deduplicates them into one ViewContent.
+        const eventId = trackViewContent(p, { value: p.price });
+        const cid = productContentId(p);
+        sendServerCapiEvent({
+          event_name: "ViewContent",
+          event_id: eventId,
+          content_ids: cid ? [cid] : [],
+          value: Number(p.price) || undefined,
+        });
+      }
       const sizes = getSizes(p);
       if (sizes.length > 0) setSelectedSizeId(sizeId(sizes[0]));
       if (p?.category) {
