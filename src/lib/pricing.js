@@ -385,3 +385,125 @@ export function restockStockPatch(product, sizeKey, quantity) {
   if (cur == null) return null;
   return { stock_quantity: cur + qty };
 }
+
+// ── Reservations (reserve-at-placement) ──────────────────────────────────────
+// A parallel `qty_reserved` counter lives alongside each stock pool: on every
+// size sub-object for products with sizes, and at the product top level for
+// sizeless products. Availability = stock_quantity − qty_reserved at the
+// matching granularity. An UNTRACKED pool (stock_quantity null/'' → num()===null)
+// is treated as unlimited, so it never blocks and carries no reservation.
+
+// Reserved count for a stock pool (size object or product), clamped to ≥ 0.
+export function getReserved(poolOwner) {
+  const r = num(poolOwner?.qty_reserved);
+  return r == null ? 0 : Math.max(0, r);
+}
+
+// Available (sellable) quantity accounting for held reservations. Returns null
+// when the pool is untracked (unlimited). When no size is selected on a sized
+// product, sums the tracked availability across all its sizes.
+export function availableStock(product, sizeKey) {
+  const size = findSize(product, sizeKey);
+  if (size) {
+    const q = num(size.stock_quantity);
+    if (q == null) return null;
+    return Math.max(0, q - getReserved(size));
+  }
+  const sizes = getSizes(product);
+  if (sizes.length > 0) {
+    let sum = null;
+    for (const s of sizes) {
+      const q = num(s.stock_quantity);
+      if (q != null) sum = (sum || 0) + Math.max(0, q - getReserved(s));
+    }
+    return sum;
+  }
+  const q = num(product?.stock_quantity);
+  if (q == null) return null;
+  return Math.max(0, q - getReserved(product));
+}
+
+// Compute the check-and-reserve patch for ONE order line. Returns a descriptor:
+//   { ok, patch, available, requested, balance }
+// `ok` is false (and patch null) ONLY when the target pool is tracked and its
+// availability is below the requested qty — the caller rejects the placement.
+// An untracked pool always succeeds with a null patch (nothing to hold).
+// `balance` is the availability AFTER a successful reserve (for the ledger).
+export function reserveStockPatch(product, sizeKey, quantity) {
+  const qty = Math.max(0, Math.floor(num(quantity) || 0));
+  if (!qty) return { ok: true, patch: null, available: null, requested: 0, balance: null };
+  const size = findSize(product, sizeKey);
+  if (size) {
+    const cur = num(size.stock_quantity);
+    if (cur == null) return { ok: true, patch: null, available: null, requested: qty, balance: null };
+    const reserved = getReserved(size);
+    const available = Math.max(0, cur - reserved);
+    if (available < qty) return { ok: false, patch: null, available, requested: qty, balance: available };
+    const sizes = getSizes(product).map((s) => (
+      sizeId(s) !== sizeId(size) ? s : { ...s, qty_reserved: reserved + qty }
+    ));
+    return { ok: true, patch: { sizes }, available, requested: qty, balance: available - qty };
+  }
+  const cur = num(product?.stock_quantity);
+  if (cur == null) return { ok: true, patch: null, available: null, requested: qty, balance: null };
+  const reserved = getReserved(product);
+  const available = Math.max(0, cur - reserved);
+  if (available < qty) return { ok: false, patch: null, available, requested: qty, balance: available };
+  return { ok: true, patch: { qty_reserved: reserved + qty }, available, requested: qty, balance: available - qty };
+}
+
+// Release a hold (cancellation BEFORE commit): qty_reserved −= qty (clamped at
+// 0). Returns null when there is nothing reserved to release. `balance` on the
+// returned object is the availability after release.
+export function releaseReservationPatch(product, sizeKey, quantity) {
+  const qty = Math.max(0, Math.floor(num(quantity) || 0));
+  if (!qty) return null;
+  const size = findSize(product, sizeKey);
+  if (size) {
+    const reserved = getReserved(size);
+    if (reserved <= 0) return null;
+    const cur = num(size.stock_quantity);
+    const newReserved = Math.max(0, reserved - qty);
+    const sizes = getSizes(product).map((s) => (
+      sizeId(s) !== sizeId(size) ? s : { ...s, qty_reserved: newReserved }
+    ));
+    const balance = cur == null ? null : Math.max(0, cur - newReserved);
+    return { patch: { sizes }, balance };
+  }
+  const reserved = getReserved(product);
+  if (reserved <= 0) return null;
+  const cur = num(product?.stock_quantity);
+  const newReserved = Math.max(0, reserved - qty);
+  const balance = cur == null ? null : Math.max(0, cur - newReserved);
+  return { patch: { qty_reserved: newReserved }, balance };
+}
+
+// Convert a hold into a sale (CONFIRMATION): decrement on-hand stock_quantity AND
+// qty_reserved together so `available` is unchanged at this step (the unit moves
+// from reserved to gone). Untracked on-hand stays untracked. `balance` is the
+// resulting on-hand quantity (mirrors the 'sale' ledger balance semantics).
+export function commitReservedStockPatch(product, sizeKey, quantity) {
+  const qty = Math.max(0, Math.floor(num(quantity) || 0));
+  if (!qty) return null;
+  const size = findSize(product, sizeKey);
+  if (size) {
+    const cur = num(size.stock_quantity);
+    const reserved = getReserved(size);
+    const newReserved = Math.max(0, reserved - qty);
+    const newStock = cur == null ? null : Math.max(0, cur - qty);
+    const sizes = getSizes(product).map((s) => {
+      if (sizeId(s) !== sizeId(size)) return s;
+      const ns = { ...s, qty_reserved: newReserved };
+      if (newStock != null) ns.stock_quantity = newStock;
+      return ns;
+    });
+    return { patch: { sizes }, balance: newStock };
+  }
+  const cur = num(product?.stock_quantity);
+  const reserved = getReserved(product);
+  const newReserved = Math.max(0, reserved - qty);
+  const patch = { qty_reserved: newReserved };
+  let balance = null;
+  if (cur != null) { patch.stock_quantity = Math.max(0, cur - qty); balance = patch.stock_quantity; }
+  return { patch, balance };
+}

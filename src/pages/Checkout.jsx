@@ -35,6 +35,7 @@ export default function Checkout() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [orderNum, setOrderNum] = useState("");
+  const [stockError, setStockError] = useState("");
   const [selectedAddrId, setSelectedAddrId] = useState("");
   const [saveAddress, setSaveAddress] = useState(true);
 
@@ -161,29 +162,46 @@ export default function Checkout() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setStockError("");
     const oNum = genOrderNum();
     // Logged-in shoppers: stamp the order with their account email + id so it
     // shows up in their order history (getMyOrders matches on these). Guests are
     // unaffected — the guest path stays exactly as before.
     const orderEmail = form.email || (isAuthenticated ? user?.email : "") || undefined;
-    const order = await base44.entities.Order.create({
-      order_number: oNum,
-      customer_name: form.name,
-      customer_phone: form.phone,
-      customer_email: orderEmail,
-      customer_address: form.address,
-      customer_city: form.city,
-      customer_notes: form.notes,
-      customer_id: isAuthenticated ? user?.id : undefined,
-      items: cart,
-      subtotal,
-      discount,
-      coupon_code: coupon?.code || undefined,
-      delivery_fee: deliveryFee,
-      total,
-      status: "pending",
-      payment_method: "cod",
-    });
+    // Order creation now ATOMICALLY holds (reserves) the inventory server-side.
+    // If any item was just taken by another shopper / is out of stock, the server
+    // rejects the placement (409) and nothing is persisted — surface that clearly.
+    let order;
+    try {
+      order = await base44.entities.Order.create({
+        order_number: oNum,
+        customer_name: form.name,
+        customer_phone: form.phone,
+        customer_email: orderEmail,
+        customer_address: form.address,
+        customer_city: form.city,
+        customer_notes: form.notes,
+        customer_id: isAuthenticated ? user?.id : undefined,
+        items: cart,
+        subtotal,
+        discount,
+        coupon_code: coupon?.code || undefined,
+        delivery_fee: deliveryFee,
+        total,
+        status: "pending",
+        payment_method: "cod",
+      });
+    } catch (err) {
+      const msg = err?.status === 409
+        ? t(
+            err?.data?.error || "Sorry, one or more items are out of stock.",
+            err?.data?.error_ar || "عذراً، نفدت الكمية من واحد أو أكثر من العناصر."
+          )
+        : t("Could not place your order. Please try again.", "تعذّر تسجيل طلبك. حاول مرة أخرى.");
+      setStockError(msg);
+      setLoading(false);
+      return;
+    }
 
     // Meta Purchase: fire the browser Pixel event and the server-side CAPI event
     // with the SAME event_id so Meta deduplicates them into one conversion. The
@@ -193,11 +211,12 @@ export default function Checkout() {
     const purchaseValue = Number(order?.total ?? total) || 0;
     trackPurchase({ items: cart, value: purchaseValue, eventId: purchaseEventId });
 
-    // Order automation (best-effort — never block the confirmation screen).
+    // Order automation (best-effort — never block the confirmation screen). Stock
+    // is already held by the reservation above; it is converted to a sale when an
+    // admin confirms the order, and released if the order is cancelled.
     try {
       const orderId = order?.id;
       await Promise.allSettled([
-        base44.functions.commitStock({ order_id: orderId }),
         base44.functions.metaTrackPurchase({ order_id: orderId, event_id: purchaseEventId }),
         base44.functions.sendOrderNotification({ order_id: orderId }),
         orderEmail ? base44.functions.sendOrderConfirmation({ order_id: orderId }) : Promise.resolve(),
@@ -349,6 +368,16 @@ export default function Checkout() {
                   {t("Save this address to my account", "حفظ هذا العنوان في حسابي")}
                 </span>
               </label>
+            )}
+
+            {stockError && (
+              <div
+                role="alert"
+                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+                style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined, direction: isRTL ? "rtl" : "ltr" }}
+              >
+                {stockError}
+              </div>
             )}
 
             <Button type="submit" disabled={loading} className="w-full h-14 text-lg font-black rounded-2xl bg-primary hover:bg-primary/90" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>

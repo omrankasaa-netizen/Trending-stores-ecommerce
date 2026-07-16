@@ -9,6 +9,8 @@ import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 // Bilingual labels for each ledger reason/type.
 const REASON_LABELS = {
   sale: { en: "Sale", ar: "بيع" },
+  reserve: { en: "Reserved (Order Placed)", ar: "حجز (تم الطلب)" },
+  release: { en: "Released (Cancelled)", ar: "إلغاء الحجز" },
   cancel_restock: { en: "Cancel Restock", ar: "إرجاع (إلغاء)" },
   manual_adjust: { en: "Manual Adjust", ar: "تعديل يدوي" },
   initial: { en: "Initial / Import", ar: "رصيد ابتدائي" },
@@ -16,6 +18,8 @@ const REASON_LABELS = {
 
 const REASON_STYLES = {
   sale: "bg-red-100 text-red-700",
+  reserve: "bg-orange-100 text-orange-700",
+  release: "bg-teal-100 text-teal-700",
   cancel_restock: "bg-green-100 text-green-700",
   manual_adjust: "bg-amber-100 text-amber-700",
   initial: "bg-blue-100 text-blue-700",

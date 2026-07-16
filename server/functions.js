@@ -1,10 +1,11 @@
-import { getRecord, createRecord, updateRecord, deleteRecord, queryRecords, nowIso, kvGet, kvSet } from './db.js';
+import { db, getRecord, createRecord, updateRecord, deleteRecord, queryRecords, nowIso, kvGet, kvSet } from './db.js';
 import { sendEmail } from './email.js';
 import {
   sendCapiPurchase, sendCapiEvent, isCapiConfigured, isEventAllowed, buildRequestUserData,
 } from './meta.js';
 import {
   resolveLineItem, decrementStockPatch, restockStockPatch,
+  reserveStockPatch, releaseReservationPatch, commitReservedStockPatch,
   getSizes, sizeId, computeManualOrderTotals,
 } from '../src/lib/pricing.js';
 
@@ -218,9 +219,12 @@ export function recomputeOrder(orderData = {}, { allowManual = false } = {}) {
 
 // ─── Stock movement ledger (append-only audit log) ───────────────────────────
 // Every stock change writes one immutable StockMovement doc. Reads are admin-only
-// (see READ_PROTECTED in server/index.js). Reasons: 'sale' (commitStock),
-// 'cancel_restock' (cancelOrder), 'manual_adjust' / 'initial' (admin product
-// create/edit). Never mutated in place, so it is a trustworthy audit trail.
+// (see READ_PROTECTED in server/index.js). Reasons: 'reserve' (hold at placement),
+// 'release' (hold freed on pre-confirmation cancel), 'sale' (commitStock),
+// 'cancel_restock' (cancelOrder after commit), 'manual_adjust' / 'initial' (admin
+// product create/edit). Never mutated in place, so it is a trustworthy audit trail.
+// 'reserve'/'release' record the change in AVAILABILITY (on-hand is untouched);
+// 'sale'/'cancel_restock' record the change in ON-HAND stock.
 function ledgerNum(v) {
   if (v == null || v === '') return null;
   const n = Number(v);
@@ -303,14 +307,83 @@ export function recordManualStockAdjustments(before, after, actor = 'admin') {
   }
 }
 
-// ─── Stock decrement on order ───────────────────────────────────────────────
-// Decrement stock for each line of an order, drawing down the SELECTED SIZE's
-// pool when the line targets a size (else the product's top-level stock).
-// Idempotent via order.stock_committed.
+// ─── Reservation hold at order PLACEMENT (atomic check-and-reserve) ───────────
+// Immediately holds inventory the moment an order is placed so no one else can
+// take the same unit. For every line, re-checks availability
+// (available = stock_quantity − qty_reserved) at the SIZE level (or product level
+// for sizeless products) AND increments qty_reserved in the SAME critical section.
+// If ANY line is short the whole placement is rejected and every reservation made
+// in this attempt is rolled back (no partial holds).
+//
+// ATOMICITY: better-sqlite3 is synchronous and Node runs one request at a time on
+// its single JS thread, so a db.transaction() with no awaits between the read and
+// the write is a true critical section — two concurrent placements are serialized,
+// and any throw (a shortage) rolls the whole transaction back. This is the race
+// fix: check and reserve can never interleave.
+//
+// Untracked pools (stock_quantity null) are unlimited: they always pass and hold
+// no reservation. Idempotent: an order already flagged stock_reserved is skipped.
+export function reserveOrderStock(orderData = {}) {
+  if (orderData.stock_reserved) return { ok: true, already_reserved: true };
+  const items = orderItems(orderData);
+  if (items.length === 0) return { ok: true, reserved: [] };
+  const reference = orderData.order_number || orderData.id || '';
+
+  const shortages = [];
+  const runReserve = db.transaction(() => {
+    for (const item of items) {
+      const pid = item.product_id || item.id;
+      if (!pid) continue;
+      const product = getRecord('Product', pid);
+      if (!product) continue; // unknown/deleted product → nothing to hold
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      const result = reserveStockPatch(product, item.size_id, qty);
+      if (!result.ok) {
+        shortages.push({
+          product_id: pid,
+          product_name: item.product_name || product.name || '',
+          product_name_ar: item.product_name_ar || product.name_ar || '',
+          size_label: item.size_label || '',
+          size_label_ar: item.size_label_ar || '',
+          requested: result.requested,
+          available: result.available,
+        });
+        // Abort the whole placement — rolls back any holds already applied above.
+        throw new Error('INSUFFICIENT_STOCK');
+      }
+      if (result.patch) {
+        updateRecord('Product', pid, result.patch);
+        recordStockMovement({
+          product, product_id: pid,
+          size_id: item.size_id || '', size_label: item.size_label || '', size_label_ar: item.size_label_ar || '',
+          delta: -qty, balance: result.balance,
+          reason: 'reserve', reference,
+        });
+      }
+    }
+  });
+
+  try {
+    runReserve();
+  } catch (e) {
+    if (e?.message === 'INSUFFICIENT_STOCK') return { ok: false, shortages };
+    throw e;
+  }
+  return { ok: true, reserved: items.length };
+}
+
+// ─── Stock commit on order CONFIRMATION (reserve → sale) ─────────────────────
+// Converts the held reservation into a real sale: on-hand stock_quantity AND
+// qty_reserved both drop by the line qty (net-zero change to availability, which
+// was already reduced at placement). Legacy orders that were never reserved
+// (placed before this change → no stock_reserved flag) fall back to the OLD
+// behavior of simply decrementing on-hand, so they don't double-count or go
+// negative. Idempotent via order.stock_committed.
 function commitStock({ order_id }) {
   const order = getRecord('Order', order_id);
   if (!order) return { _status: 404, error: 'Order not found' };
   if (order.stock_committed) return { ok: true, message: 'Stock already committed' };
+  const wasReserved = !!order.stock_reserved;
 
   for (const item of orderItems(order)) {
     const pid = item.product_id || item.id;
@@ -318,13 +391,17 @@ function commitStock({ order_id }) {
     const product = getRecord('Product', pid);
     if (!product) continue;
     const qty = Math.max(1, Number(item.quantity) || 1);
-    const patch = decrementStockPatch(product, item.size_id, item.quantity || 1);
-    if (patch) {
-      updateRecord('Product', pid, patch);
+    // Reserved orders convert reserve→sale; legacy (unreserved) orders just
+    // decrement on-hand exactly as before.
+    const result = wasReserved
+      ? commitReservedStockPatch(product, item.size_id, qty)
+      : (() => { const p = decrementStockPatch(product, item.size_id, item.quantity || 1); return p ? { patch: p, balance: balanceFromStockPatch(p, item.size_id) } : null; })();
+    if (result?.patch) {
+      updateRecord('Product', pid, result.patch);
       recordStockMovement({
         product, product_id: pid,
         size_id: item.size_id || '', size_label: item.size_label || '', size_label_ar: item.size_label_ar || '',
-        delta: -qty, balance: balanceFromStockPatch(patch, item.size_id),
+        delta: -qty, balance: result.balance,
         reason: 'sale', reference: order.order_number || order_id,
       });
     }
@@ -333,18 +410,26 @@ function commitStock({ order_id }) {
   return { ok: true };
 }
 
-// ─── Inventory restock on cancellation ───────────────────────────────────────
-// Return each order line's quantity to the correct SIZE's pool (mirror of
-// commitStock). Guards against double-restock via order.stock_restocked and
-// only restocks stock that was actually committed. Also flips the order status
-// to 'cancelled' so the transition + restock happen atomically from one call.
+// ─── Inventory return on CANCELLATION (the only path that frees stock) ─────────
+// Cancellation is the sole way held/sold stock becomes available again. Two
+// cases, driven by the order's lifecycle flags (idempotency guards), so a double
+// cancel never double-applies:
+//   • Reserved but NOT yet committed → RELEASE the hold: qty_reserved −= qty.
+//     Availability goes back up; on-hand was never touched. Ledger 'release'.
+//   • Already committed (confirmed then cancelled) → RESTOCK on-hand: +qty
+//     (existing behavior). Ledger 'cancel_restock'.
+// Also flips the order status to 'cancelled' so the transition + inventory return
+// happen from one call. Never lets a count go negative (patches clamp at 0).
 function cancelOrder({ order_id }) {
   const order = getRecord('Order', order_id);
   if (!order) return { _status: 404, error: 'Order not found' };
 
   const alreadyCancelled = order.status === 'cancelled';
   let restocked = false;
+  let released = false;
+
   if (order.stock_committed && !order.stock_restocked) {
+    // Sold stock returns to on-hand.
     for (const item of orderItems(order)) {
       const pid = item.product_id || item.id;
       if (!pid) continue;
@@ -363,12 +448,33 @@ function cancelOrder({ order_id }) {
       }
     }
     restocked = true;
+  } else if (order.stock_reserved && !order.stock_released) {
+    // Held (never committed) stock: release the reservation.
+    for (const item of orderItems(order)) {
+      const pid = item.product_id || item.id;
+      if (!pid) continue;
+      const product = getRecord('Product', pid);
+      if (!product) continue;
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      const result = releaseReservationPatch(product, item.size_id, qty);
+      if (result?.patch) {
+        updateRecord('Product', pid, result.patch);
+        recordStockMovement({
+          product, product_id: pid,
+          size_id: item.size_id || '', size_label: item.size_label || '', size_label_ar: item.size_label_ar || '',
+          delta: qty, balance: result.balance,
+          reason: 'release', reference: order.order_number || order_id,
+        });
+      }
+    }
+    released = true;
   }
 
   const patch = { status: 'cancelled' };
   if (restocked) patch.stock_restocked = true;
+  if (released) patch.stock_released = true;
   const updated = updateRecord('Order', order_id, patch);
-  return { ok: true, restocked, already_cancelled: alreadyCancelled, order: updated };
+  return { ok: true, restocked, released, already_cancelled: alreadyCancelled, order: updated };
 }
 
 // ─── Order confirmation (customer) ──────────────────────────────────────────
