@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { MessageCircle, CheckCircle2, Truck, ShoppingBag, Tag, MapPin } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
-import { cartHasFreeDelivery } from "@/lib/pricing";
+import { cartHasFreeDelivery, availableStock, findSize } from "@/lib/pricing";
 import { trackInitiateCheckout, trackPurchase, newEventId } from "@/lib/metaPixel";
 import { sendServerCapiEvent } from "@/lib/metaServer";
 import { buildContents } from "@/lib/metaShared";
@@ -159,10 +159,57 @@ export default function Checkout() {
     return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`;
   };
 
+  // Earlier, nicer stock warning: re-read each cart product and compare the
+  // requested pieces against reservation-aware availability (stock − reserved)
+  // BEFORE placing the order, so the shopper sees "Only N left / reserved"
+  // up front instead of only after the server rejects. This is advisory — the
+  // atomic server reserve on Order.create remains the source of truth. Returns
+  // the first shortage { name, available } or null when everything fits.
+  const revalidateStock = async () => {
+    const ids = [...new Set(cart.map((i) => i.product_id))];
+    const fetched = await Promise.all(
+      ids.map((id) => base44.entities.Product.filter({ id }).then(([p]) => p).catch(() => null))
+    );
+    const byId = Object.fromEntries(fetched.filter(Boolean).map((p) => [p.id, p]));
+    for (const item of cart) {
+      const product = byId[item.product_id];
+      if (!product) continue; // can't verify → let the server decide
+      const avail = availableStock(product, item.size_id);
+      if (avail == null) continue; // untracked → unlimited
+      if (item.quantity > avail) {
+        const base = isRTL ? (product.name_ar || product.name) : (product.name || product.name_ar);
+        const size = findSize(product, item.size_id);
+        const sizeLabel = size ? (isRTL ? (size.label_ar || size.label) : (size.label || size.label_ar)) : "";
+        const name = sizeLabel ? `${base} (${sizeLabel})` : base;
+        return { name, available: avail };
+      }
+    }
+    return null;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setStockError("");
+
+    // Pre-check availability so the shopper is warned before we attempt to place.
+    const shortage = await revalidateStock();
+    if (shortage) {
+      setStockError(
+        shortage.available > 0
+          ? t(
+              `Only ${shortage.available} left of ${shortage.name}. Please reduce the quantity.`,
+              `تبقى ${shortage.available} فقط من ${shortage.name}. يرجى تقليل الكمية.`
+            )
+          : t(
+              `${shortage.name} is no longer available (reserved by another customer).`,
+              `${shortage.name} لم يعد متوفراً (محجوز من قبل عميل آخر).`
+            )
+      );
+      setLoading(false);
+      return;
+    }
+
     const oNum = genOrderNum();
     // Logged-in shoppers: stamp the order with their account email + id so it
     // shows up in their order history (getMyOrders matches on these). Guests are
