@@ -152,10 +152,11 @@ export default function OrderCreate() {
         status: "pending",
         payment_method: "cod",
       });
-      // Commit stock + best-effort notifications, mirroring the checkout flow.
+      // Stock is already held server-side by the reservation performed during
+      // Order.create; it converts to a sale when the order is confirmed. Only
+      // best-effort notifications remain here, mirroring the checkout flow.
       try {
         await Promise.allSettled([
-          base44.functions.commitStock({ order_id: order?.id }),
           customer.email.trim() ? base44.functions.sendOrderConfirmation({ order_id: order?.id }) : Promise.resolve(),
           base44.functions.sendOrderNotification({ order_id: order?.id }),
         ]);

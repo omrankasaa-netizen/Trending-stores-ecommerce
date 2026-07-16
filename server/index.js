@@ -17,7 +17,7 @@ import {
 } from './auth.js';
 import {
   invokeFunction, isSuperAdmin, getGlobalMarkupPct, recomputeOrder,
-  recordManualStockAdjustments,
+  recordManualStockAdjustments, reserveOrderStock,
 } from './functions.js';
 import { applyMarkup, markupPctForProduct } from '../src/lib/pricing.js';
 import { productContentId, META_CURRENCY } from '../src/lib/metaShared.js';
@@ -535,6 +535,18 @@ app.post('/api/entities/:entity', ensureEntity, authorizeWrite('create'), (req, 
     // path is unlocked only for an authenticated admin (never guest checkout).
     if (req.params.entity === 'Order') {
       payload = recomputeOrder(payload, { allowManual: isAdmin(getUserFromRequest(req)) });
+      // Hold inventory the moment the order is placed (atomic check-and-reserve).
+      // If any line is short, reject the WHOLE placement — the order is never
+      // persisted — and return the shortages with a bilingual message.
+      const reservation = reserveOrderStock(payload);
+      if (!reservation.ok) {
+        return res.status(409).json({
+          error: 'Sorry, one or more items were just reserved by another customer or are out of stock.',
+          error_ar: 'عذراً، تم حجز واحد أو أكثر من العناصر من قبل عميل آخر أو نفدت الكمية.',
+          shortages: reservation.shortages,
+        });
+      }
+      payload.stock_reserved = true;
     }
     if (req.params.entity === 'Product') payload = sanitizeProductWrite(payload);
     const record = createRecord(req.params.entity, payload);
@@ -546,14 +558,31 @@ app.post('/api/entities/:entity', ensureEntity, authorizeWrite('create'), (req, 
   } catch (e) { handleError(res, e); }
 });
 
-app.put('/api/entities/:entity/:id', ensureEntity, authorizeWrite('update'), (req, res) => {
+app.put('/api/entities/:entity/:id', ensureEntity, authorizeWrite('update'), async (req, res) => {
   try {
     const isProduct = req.params.entity === 'Product';
-    const before = isProduct ? getRecord('Product', req.params.id) : null;
+    const isOrder = req.params.entity === 'Order';
+    const before = (isProduct || isOrder) ? getRecord(req.params.entity, req.params.id) : null;
     const patch = isProduct ? sanitizeProductWrite(req.body || {}) : (req.body || {});
-    const record = updateRecord(req.params.entity, req.params.id, patch);
+    let record = updateRecord(req.params.entity, req.params.id, patch);
     // Ledger: log admin stock edits (top-level + per size) as manual_adjust.
     if (isProduct) recordManualStockAdjustments(before, record, actorLabel(req));
+    // Order lifecycle → inventory transitions (server-authoritative, so any
+    // status change path triggers the right stock movement, idempotently):
+    //   • → confirmed : convert the placement hold into a sale (reserve→sale).
+    //   • → cancelled : free the inventory (release the hold or restock on-hand).
+    if (isOrder && before) {
+      const actor = getUserFromRequest(req);
+      const wasStatus = before.status;
+      const nowStatus = record.status;
+      if (nowStatus === 'confirmed' && wasStatus !== 'confirmed') {
+        await invokeFunction('commitStock', { order_id: req.params.id }, actor);
+        record = getRecord('Order', req.params.id);
+      } else if (nowStatus === 'cancelled' && wasStatus !== 'cancelled') {
+        const res2 = await invokeFunction('cancelOrder', { order_id: req.params.id }, actor);
+        if (res2?.order) record = res2.order;
+      }
+    }
     res.json(sanitize(req.params.entity, record));
   } catch (e) { handleError(res, e); }
 });
