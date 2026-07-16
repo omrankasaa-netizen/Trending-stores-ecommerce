@@ -423,6 +423,64 @@ export function availableStock(product, sizeKey) {
   return Math.max(0, q - getReserved(product));
 }
 
+// ── Customer-facing availability (reservation-aware, pure) ───────────────────
+// The storefront must show what a NEW shopper can actually buy right now, i.e.
+// stock_quantity − qty_reserved, at the matching granularity. These mirror the
+// isInStock / totalStock family but subtract held reservations, so a fully
+// reserved size/product reads as unavailable to browse even though its on-hand
+// stock is still non-zero. Untracked (blank) stock stays "unlimited/available",
+// exactly like isInStock — only the source of truth changes.
+
+// Sellable units for a single size object (null = untracked/unlimited).
+export function sizeAvailableStock(size) {
+  const q = num(size?.stock_quantity);
+  if (q == null) return null;
+  return Math.max(0, q - getReserved(size));
+}
+
+// Reservation-aware in-stock check for one size (untracked → available).
+export function sizeAvailable(size) {
+  const a = sizeAvailableStock(size);
+  return a == null ? true : a > 0;
+}
+
+// Reservation-aware replacement for isInStock on the storefront read-path.
+//   • size passed → that size is available when its sellable qty > 0 (or untracked).
+//   • product HAS sizes → available when ANY size is available.
+//   • sizeless product → available when stock_quantity − qty_reserved > 0 (or untracked).
+export function isAvailable(product, size = null) {
+  if (size) return sizeAvailable(size);
+  const sizes = getSizes(product);
+  if (sizes.length > 0) return sizes.some(sizeAvailable);
+  const q = num(product?.stock_quantity);
+  if (q == null) return true;
+  return Math.max(0, q - getReserved(product)) > 0;
+}
+
+// Numeric sellable units for a selection (null = untracked/unlimited), used to
+// clamp the quantity stepper. Accepts a size OBJECT (from the product page); for
+// no size it delegates to availableStock, which sums tracked size availability
+// on a sized product or uses the product pool on a sizeless one.
+export function availableUnits(product, size = null) {
+  if (size) return sizeAvailableStock(size);
+  return availableStock(product, null);
+}
+
+// Total held reservations across the per-size model (admin visibility only).
+// Mirrors totalStock: sums tracked size reservations, else the product-level
+// qty_reserved. Returns 0 when nothing is reserved.
+export function totalReserved(product) {
+  const sizes = getSizes(product);
+  if (sizes.length > 0) {
+    let sum = 0;
+    for (const s of sizes) {
+      if (num(s.stock_quantity) != null) sum += getReserved(s);
+    }
+    return sum;
+  }
+  return getReserved(product);
+}
+
 // Compute the check-and-reserve patch for ONE order line. Returns a descriptor:
 //   { ok, patch, available, requested, balance }
 // `ok` is false (and patch null) ONLY when the target pool is tracked and its

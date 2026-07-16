@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Search, Check, Edit2, Download } from "lucide-react";
 import { exportViaFunction } from "@/lib/exportCsv";
-import { totalStock, isInStock } from "@/lib/pricing";
+import { totalStock, isInStock, totalReserved, availableStock } from "@/lib/pricing";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 export default function AdminInventory() {
@@ -135,6 +135,10 @@ export default function AdminInventory() {
                 // read correctly.
                 const mainQty = p.stock_quantity;
                 const qty = totalStock(p);
+                // Read-only visibility of held reservations: on-hand shown above,
+                // held + sellable (on-hand − reserved) surfaced when any hold exists.
+                const reserved = totalReserved(p);
+                const avail = availableStock(p);
                 const cls = stockClass(p);
                 const isOut = cls === "out";
                 const isLow = cls === "low";
@@ -145,6 +149,11 @@ export default function AdminInventory() {
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm truncate">{productName(p)}</div>
                       <div className="text-xs text-muted-foreground truncate">{lang === "ar" ? p.name : p.name_ar}</div>
+                      {reserved > 0 && (
+                        <div className="text-[11px] text-amber-600 font-semibold mt-0.5">
+                          {t(`${reserved} reserved · ${avail ?? 0} available`, `${reserved} محجوز · ${avail ?? 0} متاح`)}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {isEditing ? (

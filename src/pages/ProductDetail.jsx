@@ -10,7 +10,7 @@ import { MessageCircle, ShoppingCart, Truck, Shield, RotateCcw, ChevronRight, Pl
 import { useToast } from "@/components/ui/use-toast";
 import { formatPrice } from "@/lib/utils";
 import { getImagesForVariant, getImageFrameStyle, hasCrop } from "@/lib/productImages";
-import { getSizes, sizeId, findSize, buildOfferOptions, isInStock, unitLabels } from "@/lib/pricing";
+import { getSizes, sizeId, findSize, buildOfferOptions, isAvailable, sizeAvailable, availableUnits, unitLabels } from "@/lib/pricing";
 import { trackViewContent } from "@/lib/metaPixel";
 import { sendServerCapiEvent } from "@/lib/metaServer";
 import { productContentId } from "@/lib/metaShared";
@@ -104,10 +104,23 @@ export default function ProductDetail() {
   const lineTotal = isBundle ? selectedOffer.total_price * qty : selectedOffer.unit_price * qty;
   const perUnit = selectedOffer.unit_price;
 
-  // In stock for the current selection (per-size when a size is chosen, else the
-  // product-level rule). Shared helper so card + detail agree. Untracked (blank)
-  // stock is treated as available.
-  const outOfStock = !isInStock(product, selectedSize);
+  // Available for the current selection (per-size when a size is chosen, else the
+  // product-level rule). Shared helper so card + detail agree, and it subtracts
+  // held reservations so a fully-reserved size reads as out of stock. Untracked
+  // (blank) stock is treated as available.
+  const outOfStock = !isAvailable(product, selectedSize);
+
+  // Sellable units for the current selection (null = untracked/unlimited). Used
+  // to cap the quantity stepper and warn before checkout. For a bundle offer the
+  // cap is in whole bundles (pieces / bundle size); otherwise it is pieces.
+  const availUnits = availableUnits(product, selectedSize);
+  const maxQty = availUnits == null
+    ? Infinity
+    : (isBundle ? Math.floor(availUnits / selectedOffer.min_quantity) : availUnits);
+  // The chosen quantity can't be fulfilled (e.g. a bundle larger than what's
+  // left). Distinct from outOfStock so partial availability still disables Add.
+  const exceedsStock = availUnits != null && effectiveQty > availUnits;
+  const lowStock = availUnits != null && availUnits > 0 && availUnits <= 5;
 
   const basePrice = selectedSize && selectedSize.price != null ? Number(selectedSize.price) : Number(product.price);
   const discount = product.compare_at_price && product.compare_at_price > basePrice
@@ -141,6 +154,7 @@ export default function ProductDetail() {
   const addSelectionToCart = () => addToCart(product, effectiveQty, buildOpts());
 
   const handleAddToCart = () => {
+    if (outOfStock || exceedsStock) return;
     addSelectionToCart();
     toast({ title: t("Added to cart!", "تمت الإضافة للسلة!"), description: name });
   };
@@ -150,7 +164,7 @@ export default function ProductDetail() {
   // /checkout route reads the persisted item even on slow devices — no reliance
   // on a React state flush completing before navigation.
   const handleBuyNow = () => {
-    if (outOfStock) return;
+    if (outOfStock || exceedsStock) return;
     addSelectionToCart();
     navigate("/checkout");
   };
@@ -292,13 +306,13 @@ export default function ProductDetail() {
                   {sizes.map((s) => {
                     const sid = sizeId(s);
                     const label = isRTL ? (s.label_ar || s.label) : (s.label || s.label_ar);
-                    const soldOut = s.stock_quantity != null && Number(s.stock_quantity) <= 0;
+                    const soldOut = !sizeAvailable(s);
                     const active = sid === (selectedSize ? sizeId(selectedSize) : "");
                     return (
                       <button
                         key={sid}
                         disabled={soldOut}
-                        onClick={() => { setSelectedSizeId(sid); setSelectedOfferKey("single"); setActiveImg(0); setShowVideo(false); }}
+                        onClick={() => { setSelectedSizeId(sid); setSelectedOfferKey("single"); setQty(1); setActiveImg(0); setShowVideo(false); }}
                         className={`px-4 h-11 rounded-xl border-2 font-bold text-sm transition-colors ${active ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary"} ${soldOut ? "opacity-40 line-through cursor-not-allowed" : ""}`}
                         style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}
                       >
@@ -326,7 +340,7 @@ export default function ProductDetail() {
                     return (
                       <button
                         key={o.key}
-                        onClick={() => setSelectedOfferKey(o.key)}
+                        onClick={() => { setSelectedOfferKey(o.key); setQty(1); }}
                         className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 text-sm font-bold transition-colors ${active ? "border-primary bg-primary/5" : "border-border hover:border-primary"}`}
                         style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}
                       >
@@ -357,7 +371,7 @@ export default function ProductDetail() {
                   <Minus className="w-4 h-4" />
                 </Button>
                 <span className="text-xl font-black w-8 text-center">{qty}</span>
-                <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" onClick={() => setQty(q => q + 1)} aria-label={t("Increase quantity", "زيادة الكمية")}>
+                <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={qty >= maxQty} onClick={() => setQty(q => Math.min(maxQty, q + 1))} aria-label={t("Increase quantity", "زيادة الكمية")}>
                   <Plus className="w-4 h-4" />
                 </Button>
                 {isBundle && (
@@ -366,6 +380,11 @@ export default function ProductDetail() {
                   </span>
                 )}
               </div>
+              {!outOfStock && lowStock && (
+                <p className="text-sm font-semibold text-amber-600 mt-2" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                  {t(`Only ${availUnits} left`, `تبقى ${availUnits} فقط`)}
+                </p>
+              )}
             </div>
 
             {/* CTAs */}
@@ -382,11 +401,11 @@ export default function ProductDetail() {
                 </Button>
               </a>
               <div className="flex gap-3">
-                <Button onClick={handleAddToCart} disabled={outOfStock} variant="outline" className="flex-1 h-12 rounded-xl font-bold border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground gap-2 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                <Button onClick={handleAddToCart} disabled={outOfStock || exceedsStock} variant="outline" className="flex-1 h-12 rounded-xl font-bold border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground gap-2 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                   <ShoppingCart className="w-5 h-5" />
                   {t("Add to Cart", "أضف للسلة")}
                 </Button>
-                <Button onClick={handleBuyNow} disabled={outOfStock} className="flex-1 h-12 rounded-xl font-bold bg-primary hover:bg-primary/90 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+                <Button onClick={handleBuyNow} disabled={outOfStock || exceedsStock} className="flex-1 h-12 rounded-xl font-bold bg-primary hover:bg-primary/90 disabled:opacity-50" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                   {t("Buy Now", "اشترِ الآن")}
                 </Button>
               </div>
