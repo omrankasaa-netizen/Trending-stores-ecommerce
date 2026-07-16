@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -11,36 +12,49 @@ import Register from './pages/Register';
 import Home from './pages/Home';
 import Shop from './pages/Shop';
 import ProductDetail from './pages/ProductDetail';
-import Checkout from './pages/Checkout';
 import About from './pages/About';
 import Delivery from './pages/Delivery';
 import Contact from './pages/Contact';
 import Search from './pages/Search';
 import CmsPage from './pages/CmsPage';
 import Faq from './pages/Faq';
-import AccountLayout from './pages/account/AccountLayout';
-import ProfilePage from './pages/account/ProfilePage';
-import OrderHistoryPage from './pages/account/OrderHistoryPage';
-import AddressesPage from './pages/account/AddressesPage';
-import AdminDashboard from './pages/admin/Dashboard';
-import AdminProducts from './pages/admin/Products';
-import AdminOrders from './pages/admin/Orders';
-import OrderCreate from './pages/admin/OrderCreate';
-import OrderDetail from './pages/admin/OrderDetail';
-import AdminInventory from './pages/admin/Inventory';
-import AdminStockHistory from './pages/admin/StockHistory';
-import AdminCategories from './pages/admin/Categories';
-import AdminDiscounts from './pages/admin/Discounts';
-import AdminContent from './pages/admin/Content';
-import AdminSettings from './pages/admin/Settings';
-import AdminEmailLog from './pages/admin/EmailLog';
-import AdminTeam from './pages/admin/Team';
-import AdminAuditLog from './pages/admin/AuditLog';
-import AdminCustomers from './pages/admin/Customers';
-import AdminFinances from './pages/admin/Finances';
-import AdminLayout from './components/admin/AdminLayout';
 import Layout from './components/Layout';
 import ScrollToTop from './components/ScrollToTop';
+
+// Route-level code splitting: ad-click shoppers land on the storefront
+// (Home/Shop/ProductDetail), so checkout, the customer account area, and the
+// entire admin panel are lazy-loaded to keep the initial bundle small. Each
+// becomes its own chunk fetched only when the route is visited.
+const Checkout = lazy(() => import('./pages/Checkout'));
+const AccountLayout = lazy(() => import('./pages/account/AccountLayout'));
+const ProfilePage = lazy(() => import('./pages/account/ProfilePage'));
+const OrderHistoryPage = lazy(() => import('./pages/account/OrderHistoryPage'));
+const AddressesPage = lazy(() => import('./pages/account/AddressesPage'));
+const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
+const AdminProducts = lazy(() => import('./pages/admin/Products'));
+const AdminOrders = lazy(() => import('./pages/admin/Orders'));
+const OrderCreate = lazy(() => import('./pages/admin/OrderCreate'));
+const OrderDetail = lazy(() => import('./pages/admin/OrderDetail'));
+const AdminInventory = lazy(() => import('./pages/admin/Inventory'));
+const AdminStockHistory = lazy(() => import('./pages/admin/StockHistory'));
+const AdminCategories = lazy(() => import('./pages/admin/Categories'));
+const AdminDiscounts = lazy(() => import('./pages/admin/Discounts'));
+const AdminContent = lazy(() => import('./pages/admin/Content'));
+const AdminSettings = lazy(() => import('./pages/admin/Settings'));
+const AdminEmailLog = lazy(() => import('./pages/admin/EmailLog'));
+const AdminTeam = lazy(() => import('./pages/admin/Team'));
+const AdminAuditLog = lazy(() => import('./pages/admin/AuditLog'));
+const AdminCustomers = lazy(() => import('./pages/admin/Customers'));
+const AdminFinances = lazy(() => import('./pages/admin/Finances'));
+const AdminLayout = lazy(() => import('./components/admin/AdminLayout'));
+
+function RouteFallback() {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" />
+    </div>
+  );
+}
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -63,6 +77,7 @@ const AuthenticatedApp = () => {
   }
 
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Storefront Routes (with Header/Footer) */}
       <Route element={<Layout />}>
@@ -120,6 +135,7 @@ const AuthenticatedApp = () => {
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>
+    </Suspense>
   );
 };
 
