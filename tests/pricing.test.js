@@ -5,7 +5,43 @@ import {
   getTiers, resolveTier, findTierByMin, resolveLineItem, buildOfferOptions,
   cartHasFreeDelivery, decrementStockPatch, restockStockPatch, isInStock,
   orderDiscountAmount, computeManualOrderTotals, totalStock, unitLabels,
+  getDisplayPrice,
 } from '../src/lib/pricing.js';
+
+// ── Display price (card / quick-order) ───────────────────────────────────────
+test('getDisplayPrice: sized product uses the cheapest size price', () => {
+  const product = {
+    price: 0,
+    sizes: [
+      { label: 'S', price: 30 },
+      { label: 'M', price: 20 },
+      { label: 'L', price: 25 },
+    ],
+  };
+  assert.equal(getDisplayPrice(product), 20);
+});
+
+test('getDisplayPrice: simple product falls back to top-level price', () => {
+  assert.equal(getDisplayPrice({ price: 15 }), 15);
+  assert.equal(getDisplayPrice({ price: '15' }), 15);
+});
+
+test('getDisplayPrice: ignores zero/blank size prices, uses valid ones', () => {
+  const product = {
+    price: 0,
+    sizes: [
+      { label: 'S', price: 0 },
+      { label: 'M', price: '' },
+      { label: 'L', price: 40 },
+    ],
+  };
+  assert.equal(getDisplayPrice(product), 40);
+});
+
+test('getDisplayPrice: returns 0 when no valid price exists anywhere', () => {
+  assert.equal(getDisplayPrice({ price: 0, sizes: [{ label: 'S', price: 0 }] }), 0);
+  assert.equal(getDisplayPrice({}), 0);
+});
 
 // ── Availability (isInStock) ────────────────────────────────────────────────
 test('isInStock: simple product uses product-level stock (string coercion)', () => {

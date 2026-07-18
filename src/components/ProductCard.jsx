@@ -5,15 +5,15 @@ import { Button } from "@/components/ui/button";
 import { MessageCircle, ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { getProductImages, getImageFrameStyle, hasCrop, imageSrc } from "@/lib/productImages";
-import { getSizes, getTiers, isAvailable } from "@/lib/pricing";
+import { getSizes, getTiers, isAvailable, getDisplayPrice } from "@/lib/pricing";
 
 const WHATSAPP = "96181751841";
 
 function buildWhatsAppUrl(product, isRTL) {
   const name = isRTL ? product.name_ar : product.name;
   const msg = isRTL
-    ? `مرحبا، أريد الطلب: ${name} - السعر: ${formatPrice(product.price)}`
-    : `Hi, I want to order: ${name} - Price: ${formatPrice(product.price)}`;
+    ? `مرحبا، أريد الطلب: ${name} - السعر: ${formatPrice(getDisplayPrice(product))}`
+    : `Hi, I want to order: ${name} - Price: ${formatPrice(getDisplayPrice(product))}`;
   return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`;
 }
 
@@ -180,7 +180,7 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
         </Link>
 
         <div className="flex items-center gap-2 mt-auto">
-          <span className="text-lg font-black text-foreground">{formatPrice(product.price)}</span>
+          <span className="text-lg font-black text-foreground">{formatPrice(getDisplayPrice(product))}</span>
           {product.compare_at_price && (
             <span className="text-sm text-muted-foreground line-through">{formatPrice(product.compare_at_price)}</span>
           )}
