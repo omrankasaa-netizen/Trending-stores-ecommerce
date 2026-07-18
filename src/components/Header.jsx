@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -24,11 +25,20 @@ export default function Header() {
   const [cartOpen, setCartOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Pull live categories so admin-created categories show up in the nav/menu,
+  // mirroring the pattern used by Home.jsx and Shop.jsx.
+  useEffect(() => {
+    base44.entities.Category.filter({ is_visible: true }, "display_order", 8)
+      .then((rows) => setCategories(rows || []))
+      .catch(() => {});
   }, []);
 
   return (
@@ -45,15 +55,16 @@ export default function Header() {
               <Link to="/shop" className="text-sm font-semibold text-foreground hover:text-primary transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                 {t("Shop All", "تسوق الكل")}
               </Link>
-              <Link to="/shop?cat=garden" className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                {t("Garden & Tools", "حديقة وأدوات")}
-              </Link>
-              <Link to="/shop?cat=electronics" className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                {t("Electronics", "إلكترونيات")}
-              </Link>
-              <Link to="/shop?cat=home" className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-                {t("Home & Kitchen", "منزل ومطبخ")}
-              </Link>
+              {categories.slice(0, 4).map((c) => (
+                <Link
+                  key={c.id || c.slug}
+                  to={`/shop?cat=${c.slug}`}
+                  className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors"
+                  style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}
+                >
+                  {isRTL ? (c.name_ar || c.name) : (c.name || c.name_ar)}
+                </Link>
+              ))}
             </nav>
 
             {/* Center Logo */}
@@ -186,12 +197,11 @@ export default function Header() {
                       {[
                         { to: "/", en: "Home", ar: "الرئيسية" },
                         { to: "/shop", en: "Shop All", ar: "جميع المنتجات" },
-                        { to: "/shop?cat=garden", en: "Garden & Tools", ar: "حديقة وأدوات" },
-                        { to: "/shop?cat=electronics", en: "Electronics", ar: "إلكترونيات" },
-                        { to: "/shop?cat=home", en: "Home & Kitchen", ar: "منزل ومطبخ" },
-                        { to: "/shop?cat=health", en: "Health & Beauty", ar: "صحة وجمال" },
-                        { to: "/shop?cat=kids", en: "Kids & Baby", ar: "أطفال وأمومة" },
-                        { to: "/shop?cat=pets", en: "Pets", ar: "حيوانات أليفة" },
+                        ...categories.map((c) => ({
+                          to: `/shop?cat=${c.slug}`,
+                          en: c.name,
+                          ar: c.name_ar || c.name,
+                        })),
                       ].map(item => (
                         <Link
                           key={item.to + item.en}

@@ -71,6 +71,21 @@ export function baseUnitPrice(product, size) {
   return num(product?.price) || 0;
 }
 
+// Best available "from" price for card-level display / quick-order messages
+// that have no specific size selected yet. Sized products show the cheapest
+// size's price; simple products fall back to the top-level price field.
+// Never invents a price — returns 0 only if no valid price exists anywhere.
+export function getDisplayPrice(product) {
+  const sizes = getSizes(product);
+  if (sizes.length > 0) {
+    const prices = sizes
+      .map((s) => baseUnitPrice(product, s))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (prices.length > 0) return Math.min(...prices);
+  }
+  return baseUnitPrice(product, null);
+}
+
 // ── Tiers / quantity offers ──────────────────────────────────────────────────
 // Offers/tiers can be defined PER SIZE (size.offers) — the primary model — or
 // PER PRODUCT (product.tiers) as a backward-compatible fallback. Both use the
