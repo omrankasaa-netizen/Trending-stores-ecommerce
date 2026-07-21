@@ -380,6 +380,36 @@ test('buildOfferOptions: single-unit first, then tiers, markup-inclusive', () =>
   assert.equal(opts[1].total_price, round2(24 * 1.1)); // 26.4
 });
 
+test('buildOfferOptions: two offers with the SAME min_quantity get distinct keys', () => {
+  // An admin can configure two different bundle deals that both require the same
+  // minimum quantity. Their keys must be unique so the product page can select
+  // and price each one independently (previously both became `tier-3`, so the
+  // UI highlighted both and always resolved to the first one's price).
+  const product = { price: 10, tiers: [
+    { min_quantity: 3, total_price: 24, label: 'Deal A', label_ar: 'عرض أ' },
+    { min_quantity: 3, total_price: 27, label: 'Deal B', label_ar: 'عرض ب' },
+  ] };
+  const opts = buildOfferOptions(product, null);
+  assert.equal(opts.length, 3); // single + two 3-piece offers
+
+  const tierOpts = opts.filter((o) => o.min_quantity === 3);
+  assert.equal(tierOpts.length, 2);
+  // Keys are unique across the whole returned array.
+  const keys = opts.map((o) => o.key);
+  assert.equal(new Set(keys).size, keys.length);
+
+  // Each offer keeps its own price/label and is independently resolvable by key.
+  const a = opts.find((o) => o.key === tierOpts[0].key);
+  const b = opts.find((o) => o.key === tierOpts[1].key);
+  assert.notEqual(a.key, b.key);
+  assert.equal(a.total_price, 24);
+  assert.equal(a.unit_price, round2(24 / 3));
+  assert.equal(a.label, 'Deal A');
+  assert.equal(b.total_price, 27);
+  assert.equal(b.unit_price, round2(27 / 3));
+  assert.equal(b.label, 'Deal B');
+});
+
 // ── Free delivery detection ─────────────────────────────────────────────────
 test('cartHasFreeDelivery: any free_delivery or free_shipping line qualifies', () => {
   assert.equal(cartHasFreeDelivery([{ price: 1 }]), false);
