@@ -13,6 +13,8 @@ import { getImagesForVariant, getImageFrameStyle, hasCrop } from "@/lib/productI
 import { getSizes, sizeId, findSize, buildOfferOptions, isAvailable, sizeAvailable, availableUnits, unitLabels } from "@/lib/pricing";
 import { trackViewContent } from "@/lib/metaPixel";
 import { sendServerCapiEvent } from "@/lib/metaServer";
+import { trackTiktokViewContent } from "@/lib/tiktokPixel";
+import { sendTiktokServerEvent } from "@/lib/tiktokServer";
 import { productContentId } from "@/lib/metaShared";
 
 const WHATSAPP = "96181751841";
@@ -54,6 +56,14 @@ export default function ProductDetail() {
           event_name: "ViewContent",
           event_id: eventId,
           content_ids: cid ? [cid] : [],
+          value: Number(p.price) || undefined,
+        });
+        // TikTok ViewContent twin — a SEPARATE event_id (independent dedup namespace).
+        const ttEventId = trackTiktokViewContent(p, { value: p.price });
+        sendTiktokServerEvent({
+          event_name: "ViewContent",
+          event_id: ttEventId,
+          contents: cid ? [{ content_id: cid, content_name: p?.name || p?.name_ar, quantity: 1, price: Number(p.price) || undefined }] : [],
           value: Number(p.price) || undefined,
         });
       }

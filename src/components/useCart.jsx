@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { trackAddToCart } from "@/lib/metaPixel";
 import { sendServerCapiEvent } from "@/lib/metaServer";
+import { trackTiktokAddToCart } from "@/lib/tiktokPixel";
+import { sendTiktokServerEvent } from "@/lib/tiktokServer";
 import { productContentId } from "@/lib/metaShared";
 
 const CART_KEY = "ts_cart";
@@ -84,6 +86,14 @@ export function useCart() {
       event_id: eventId,
       content_ids: cid ? [cid] : [],
       contents: cid ? [{ id: cid, quantity: q, item_price: unitPrice }] : [],
+      value: unitPrice * q,
+    });
+    // TikTok AddToCart twin — a SEPARATE event_id (independent dedup namespace).
+    const ttEventId = trackTiktokAddToCart({ product: { ...product, price: unitPrice }, quantity: qty, value: unitPrice });
+    sendTiktokServerEvent({
+      event_name: "AddToCart",
+      event_id: ttEventId,
+      contents: cid ? [{ content_id: cid, content_name: product?.name || product?.name_ar, quantity: q, price: unitPrice }] : [],
       value: unitPrice * q,
     });
   }, [saveCart]);

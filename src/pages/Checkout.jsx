@@ -15,6 +15,7 @@ import { formatPrice } from "@/lib/utils";
 import { cartHasFreeDelivery, availableStock, findSize } from "@/lib/pricing";
 import { trackInitiateCheckout, trackPurchase, newEventId } from "@/lib/metaPixel";
 import { sendServerCapiEvent } from "@/lib/metaServer";
+import { trackTiktokInitiateCheckout, trackTiktokPurchase, newTiktokEventId } from "@/lib/tiktokPixel";
 import { buildContents } from "@/lib/metaShared";
 
 const WHATSAPP_FALLBACK = "96181751841";
@@ -111,6 +112,8 @@ export default function Checkout() {
         contents,
         value: Number(total) || undefined,
       });
+      // TikTok InitiateCheckout twin — separate event_id (independent dedup namespace).
+      trackTiktokInitiateCheckout({ items: cart, value: total });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -258,6 +261,11 @@ export default function Checkout() {
     const purchaseValue = Number(order?.total ?? total) || 0;
     trackPurchase({ items: cart, value: purchaseValue, eventId: purchaseEventId });
 
+    // TikTok CompletePayment — separate event_id (independent dedup namespace).
+    // Browser Pixel + server Events API share this id so TikTok dedupes the pair.
+    const tiktokPurchaseEventId = newTiktokEventId();
+    trackTiktokPurchase({ items: cart, value: purchaseValue, eventId: tiktokPurchaseEventId });
+
     // Order automation (best-effort — never block the confirmation screen). Stock
     // is already held by the reservation above; it is converted to a sale when an
     // admin confirms the order, and released if the order is cancelled.
@@ -265,6 +273,7 @@ export default function Checkout() {
       const orderId = order?.id;
       await Promise.allSettled([
         base44.functions.metaTrackPurchase({ order_id: orderId, event_id: purchaseEventId }),
+        base44.functions.tiktokTrackPurchase({ order_id: orderId, event_id: tiktokPurchaseEventId }),
         base44.functions.sendOrderNotification({ order_id: orderId }),
         orderEmail ? base44.functions.sendOrderConfirmation({ order_id: orderId }) : Promise.resolve(),
         coupon ? base44.entities.Coupon.update(coupon.id, { usage_count: Number(coupon.usage_count || 0) + 1 }) : Promise.resolve(),
