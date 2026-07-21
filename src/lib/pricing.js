@@ -220,12 +220,15 @@ export function buildOfferOptions(product, size, globalPct = 0) {
     label_ar: '',
     free_shipping: false,
   }];
-  for (const t of getTiers(product, size)) {
+  getTiers(product, size).forEach((t, idx) => {
     const q = Number(t.min_quantity);
     const tierTotal = num(t.total_price);
     const total = tierTotal != null ? applyMarkup(tierTotal, markupPct) : round2(unit * q);
     options.push({
-      key: `tier-${q}`,
+      // Index makes the key unique per offer even if two configured offers
+      // share the same min_quantity — otherwise the selection UI can't tell
+      // them apart and resolves to the wrong (first-matching) offer.
+      key: `tier-${idx}-${q}`,
       min_quantity: q,
       quantity: q,
       total_price: total,
@@ -234,7 +237,7 @@ export function buildOfferOptions(product, size, globalPct = 0) {
       label_ar: t.label_ar || '',
       free_shipping: !!t.free_shipping,
     });
-  }
+  });
   return options;
 }
 
