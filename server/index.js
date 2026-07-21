@@ -243,9 +243,10 @@ app.post('/api/users/invite', (req, res) => {
 });
 
 // ─── Functions ────────────────────────────────────────────────────────────────
-// Non-PII request context handed to functions that need Meta match keys
-// (metaTrackEvent). IP prefers the left-most x-forwarded-for hop behind a proxy;
-// _fbp/_fbc are Meta's own first-party cookies. Never carries email/phone.
+// Non-PII request context handed to functions that need ad-platform match keys
+// (metaTrackEvent / tiktokTrackEvent). IP prefers the left-most x-forwarded-for
+// hop behind a proxy; _fbp/_fbc are Meta's first-party cookies and ttclid/_ttp
+// are TikTok's equivalents. Never carries email/phone.
 function requestContext(req) {
   const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
   return {
@@ -253,6 +254,8 @@ function requestContext(req) {
     userAgent: req.headers['user-agent'] || '',
     fbp: req.cookies?._fbp || '',
     fbc: req.cookies?._fbc || '',
+    ttclid: req.cookies?.ttclid || '',
+    ttp: req.cookies?._ttp || '',
   };
 }
 

@@ -4,6 +4,7 @@ import Header from "./Header.jsx";
 import Footer from "./Footer.jsx";
 import ConsentBanner from "./ConsentBanner.jsx";
 import { initMetaPixel, trackPageView } from "@/lib/metaPixel";
+import { initTiktokPixel, trackTiktokPageView } from "@/lib/tiktokPixel";
 
 export default function Layout() {
   const location = useLocation();
@@ -13,10 +14,12 @@ export default function Layout() {
   // is unset or consent is withheld.
   useEffect(() => {
     initMetaPixel();
+    initTiktokPixel();
   }, []);
 
   useEffect(() => {
     trackPageView();
+    trackTiktokPageView();
   }, [location.pathname]);
 
   return (

@@ -7,6 +7,7 @@ import {
   grantConsent,
   denyConsent,
 } from "@/lib/metaPixel";
+import { initTiktokPixel, trackTiktokPageView } from "@/lib/tiktokPixel";
 
 // Bilingual cookie/tracking consent banner. It only appears when a Meta Pixel
 // is actually configured AND the shopper has not decided yet. Accepting loads +
@@ -22,7 +23,13 @@ export default function ConsentBanner() {
 
   if (!visible) return null;
 
-  const accept = () => { grantConsent(); setVisible(false); };
+  const accept = () => {
+    grantConsent();
+    // The shared consent decision also gates TikTok — activate its pixel too.
+    initTiktokPixel();
+    trackTiktokPageView();
+    setVisible(false);
+  };
   const decline = () => { denyConsent(); setVisible(false); };
 
   return (

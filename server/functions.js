@@ -4,6 +4,10 @@ import {
   sendCapiPurchase, sendCapiEvent, isCapiConfigured, isEventAllowed, buildRequestUserData,
 } from './meta.js';
 import {
+  sendTiktokPurchase, sendTiktokEvent, isEventsApiConfigured as isTiktokConfigured,
+  isEventAllowed as isTiktokEventAllowed, buildRequestUser as buildTiktokRequestUser,
+} from './tiktok.js';
+import {
   resolveLineItem, decrementStockPatch, restockStockPatch,
   reserveStockPatch, releaseReservationPatch, commitReservedStockPatch,
   getSizes, sizeId, computeManualOrderTotals,
@@ -1053,11 +1057,55 @@ async function metaTrackEvent({ event_name, event_id, source_url, content_ids, c
   });
 }
 
+// ─── TikTok Events API — authoritative server-side CompletePayment ───────────
+// Parallel twin of metaTrackPurchase. Sends one server CompletePayment event per
+// order via TikTok's Events API, sharing the browser Pixel's event_id for
+// deduplication. Idempotent: order.tiktok_purchase_sent guards against a second
+// send if checkout retries (same pattern as meta_purchase_sent — the Order store
+// is schema-flexible at write time). Silent no-op when TikTok env vars are unset.
+async function tiktokTrackPurchase({ order_id, event_id }) {
+  if (!order_id) return { _status: 400, error: 'order_id required' };
+  if (!isTiktokConfigured()) return { ok: true, skipped: true, reason: 'not_configured' };
+  const order = getRecord('Order', order_id);
+  if (!order) return { _status: 404, error: 'Order not found' };
+  if (order.tiktok_purchase_sent) return { ok: true, already_sent: true };
+
+  const result = await sendTiktokPurchase({ order, eventId: event_id });
+  // Only mark as sent when TikTok actually accepted the event, so a transient
+  // failure can be retried without permanently dropping the conversion.
+  if (result?.ok) updateRecord('Order', order_id, { tiktok_purchase_sent: true });
+  return result;
+}
+
+// ─── TikTok Events API — server-side browsing-event twins ────────────────────
+// Parallel twin of metaTrackEvent. Server-side ViewContent / AddToCart /
+// InitiateCheckout that share the browser Pixel's event_id so TikTok deduplicates
+// the browser+server pair into ONE event. CompletePayment is intentionally NOT
+// accepted here — it keeps its dedicated authoritative path (tiktokTrackPurchase).
+// user match keys are derived from the REQUEST context (ip / user-agent / ttclid /
+// _ttp); no email/phone is ever accepted from the client for these. Public,
+// storefront-triggered. Silent no-op when TikTok env vars are unset. Never throws.
+async function tiktokTrackEvent({ event_name, event_id, source_url, contents, value } = {}, _user, ctx = {}) {
+  if (!isTiktokEventAllowed(event_name)) return { _status: 400, error: 'Invalid or unsupported event_name' };
+  if (!isTiktokConfigured()) return { ok: true, skipped: true, reason: 'not_configured' };
+  const userData = buildTiktokRequestUser(ctx);
+  return await sendTiktokEvent({
+    eventName: event_name,
+    eventId: event_id,
+    sourceUrl: source_url,
+    contents,
+    value,
+    userData,
+  });
+}
+
 const REGISTRY = {
   commitStock,
   cancelOrder,
   metaTrackPurchase,
   metaTrackEvent,
+  tiktokTrackPurchase,
+  tiktokTrackEvent,
   getMarkupConfig,
   saveMarkupConfig,
   getMyOrders,
@@ -1093,6 +1141,8 @@ const GUARDS = {
   commitStock: 'public',
   metaTrackPurchase: 'public',
   metaTrackEvent: 'public',
+  tiktokTrackPurchase: 'public',
+  tiktokTrackEvent: 'public',
   cancelOrder: 'admin',
   getMarkupConfig: 'admin',
   saveMarkupConfig: 'admin',
