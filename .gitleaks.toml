@@ -1,0 +1,34 @@
+# gitleaks configuration for Trending Store
+# Extends the default gitleaks ruleset (Resend, JWT, generic API keys, etc.)
+# and adds project-specific allowlisting for placeholder values.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "resend-api-key"
+description = "Resend API key"
+regex = '''re_[A-Za-z0-9_]{16,}'''
+keywords = ["re_"]
+
+[allowlist]
+description = "Allowlisted paths and placeholder values that are safe by design"
+paths = [
+  '''\.env\.example$''',
+  '''\.gitleaks\.toml$''',
+]
+regexes = [
+  # Documentation placeholders — not real secrets.
+  '''re_your_resend_api_key''',
+  '''re_REDACTED_ROTATED''',
+  '''<set-a-strong-password>''',
+  '''<set-a-long-random-secret>''',
+  '''<your-resend-api-key>''',
+  '''change-me-on-first-login''',
+  # Dev-only fallbacks — never usable in production (guarded by NODE_ENV).
+  '''trending-dev-only-insecure-secret''',
+  '''trending-dev-only-change-me''',
+  # Historical fallback removed from HEAD by the security-cleanup PR. It still
+  # exists in git history, so it is allowlisted to keep full-history scans
+  # green — the live credential MUST be rotated (see SECURITY.md).
+  '''TrendingAdmin2026!''',
+]
