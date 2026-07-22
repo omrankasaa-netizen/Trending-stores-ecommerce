@@ -26,6 +26,7 @@ import { runSeed, reseedCatalog } from './seed.js';
 import { optimizeAndStore, storeVideo, isVideoUpload, bufferFromBase64 } from './imageOptimize.js';
 import { getStorage, storageStatus } from './storage.js';
 import { getProductById, injectProductMeta, SITE_BASE } from './productMeta.js';
+import { runR2HostMigration } from './r2HostMigration.js';
 
 // Build the verification-code email HTML (Trending Store branding).
 function otpEmailHtml(code) {
@@ -47,6 +48,9 @@ const PORT = process.env.PORT || 4000;
 
 initSchema();
 runSeed();
+// Idempotent: rewrites any image URLs still pointing at the legacy r2.dev host
+// to the current R2_PUBLIC_BASE_URL (no-op once everything is migrated).
+runR2HostMigration();
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
