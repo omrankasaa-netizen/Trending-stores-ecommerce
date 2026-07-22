@@ -38,10 +38,11 @@
     <!-- TRENDING_SOCIAL_META_END -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Product images (Cloudflare R2) and pixels: warm the connection early
-         so the first product image and pixel request skip DNS/TLS setup latency. -->
-    <link rel="preconnect" href="https://pub-f5f0b1cd4f3b424fb3e1688852349e63.r2.dev" crossorigin>
-    <link rel="dns-prefetch" href="https://pub-f5f0b1cd4f3b424fb3e1688852349e63.r2.dev">
+    <!-- Product images (Cloudflare R2 custom domain) and pixels: warm the
+         connection early so the first product image and pixel request skip
+         DNS/TLS setup latency. -->
+    <link rel="preconnect" href="https://images.trending-store.com" crossorigin>
+    <link rel="dns-prefetch" href="https://images.trending-store.com">
     <link rel="preconnect" href="https://connect.facebook.net">
     <link rel="dns-prefetch" href="https://connect.facebook.net">
     <link rel="preconnect" href="https://analytics.tiktok.com" crossorigin>

@@ -81,13 +81,20 @@ R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY
 R2_BUCKET
-R2_PUBLIC_BASE_URL      # public base URL of the bucket, e.g. https://media.example.com
+R2_PUBLIC_BASE_URL      # public base URL of the bucket: https://images.trending-store.com
 R2_ENDPOINT             # optional; derived from the account id when omitted
 ```
 
 Set these as Railway **Variables** (never commit them). With R2 configured,
 product images **and videos** are stored durably and served from the R2 public
 URL, surviving redeploys.
+
+Image URLs are stored in the DB as absolute URLs baked at upload time. When the
+bucket's public hostname changes (e.g. moving from the auto-generated `r2.dev`
+host to the custom domain), a boot-time idempotent migration
+(`server/r2HostMigration.js`) rewrites stored URLs from the legacy host to the
+current `R2_PUBLIC_BASE_URL` — no manual DB edit needed; watch the deploy log
+for `[r2-host-migration]` lines.
 
 If you prefer to keep uploads on disk instead of R2, mount a second Volume at
 `/data/uploads` — but R2 is the recommended path for media.
