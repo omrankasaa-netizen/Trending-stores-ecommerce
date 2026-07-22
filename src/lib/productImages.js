@@ -41,6 +41,28 @@ function cfResize(url, size) {
   return `${u.origin}/cdn-cgi/image/${opts}${u.pathname}${u.search}`;
 }
 
+// Attach to an <img onError={...}>.
+// If the site ever routes images through Cloudflare's /cdn-cgi/image/ resize
+// proxy (see cfResize), a cold edge cache can error and leave the image broken;
+// when the failed src is a resize-proxy URL, retry ONCE against the direct
+// origin URL (prefix stripped) before giving up. After the retry (or for
+// non-proxy URLs), swap in the neutral placeholder exactly once (guards against
+// an error loop if the placeholder itself fails).
+export function handleImageError(e) {
+  const img = e.currentTarget;
+  if (img.dataset.fallbackApplied) return;
+  if (!img.dataset.cfRetried && img.src.includes("/cdn-cgi/image/")) {
+    img.dataset.cfRetried = "1";
+    const direct = img.src.replace(/\/cdn-cgi\/image\/[^/]+/, "");
+    if (direct !== img.src) {
+      img.src = direct;
+      return;
+    }
+  }
+  img.dataset.fallbackApplied = "1";
+  img.src = PLACEHOLDER;
+}
+
 // Pick the best derivative URL for a desired size from a normalized image, then
 // route through Cloudflare resizing. Variant-aware (uses image.variants when the
 // upload produced large/card/thumb webp derivatives); falls back to the single

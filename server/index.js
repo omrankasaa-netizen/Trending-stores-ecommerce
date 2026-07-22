@@ -25,6 +25,7 @@ import { sendEmail } from './email.js';
 import { runSeed, reseedCatalog } from './seed.js';
 import { optimizeAndStore, storeVideo, isVideoUpload, bufferFromBase64 } from './imageOptimize.js';
 import { getStorage, storageStatus } from './storage.js';
+import { getProductById, injectProductMeta, SITE_BASE } from './productMeta.js';
 
 // Build the verification-code email HTML (Trending Store branding).
 function otpEmailHtml(code) {
@@ -56,6 +57,19 @@ const UPLOAD_MAX_MB = Math.max(1, Number(process.env.UPLOAD_MAX_MB) || 150);
 const BODY_LIMIT = `${UPLOAD_MAX_MB}mb`;
 
 const app = express();
+app.disable('x-powered-by');
+
+// Baseline security headers. NOTE: a Content-Security-Policy is intentionally
+// NOT set yet — Meta/TikTok pixels and Google Fonts make a correct CSP risky;
+// TODO: introduce one in report-only mode first (Content-Security-Policy-Report-Only)
+// and tighten from observed violations.
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'SAMEORIGIN');
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
 app.use(express.json({ limit: BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 app.use(cookieParser());
@@ -613,7 +627,9 @@ app.get('/meta-feed.csv', (req, res) => {
   try {
     const globalPct = getGlobalMarkupPct();
     const products = queryRecords('Product', { query: { status: 'active' }, limit: 10000 });
-    const base = `${req.protocol}://${req.get('host')}`;
+    // Behind the Railway/Cloudflare proxy req.protocol is "http"; product
+    // links in the feed must be canonical https URLs (Meta fetches them).
+    const base = `https://${req.get('host')}`;
     const columns = [
       'id', 'title', 'description', 'availability', 'condition',
       'price', 'sale_price', 'link', 'image_link', 'brand',
@@ -654,11 +670,70 @@ app.get('/meta-feed.csv', (req, res) => {
   } catch (e) { handleError(res, e); }
 });
 
+// ─── robots.txt + sitemap.xml (public, SEO) ─────────────────────────────────
+// Crawl directives. Admin/auth/account internals are disallowed; the sitemap
+// is referenced so crawlers find the canonical URL set.
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send([
+    'User-agent: *',
+    'Allow: /',
+    'Disallow: /admin',
+    'Disallow: /account',
+    'Disallow: /api/',
+    'Disallow: /checkout',
+    'Disallow: /login',
+    'Disallow: /register',
+    '',
+    `Sitemap: ${SITE_BASE}/sitemap.xml`,
+    '',
+  ].join('\n'));
+});
+
+// Static storefront pages worth indexing, plus every active product. Generated
+// from the live DB so it never goes stale; lastmod omitted for static routes
+// (content is CMS-driven) and set from updated_date for products when present.
+const SITEMAP_STATIC_PATHS = [
+  '/', '/shop', '/about', '/delivery', '/contact', '/faq',
+  '/privacy', '/terms', '/shipping', '/returns',
+];
+
+app.get('/sitemap.xml', (req, res) => {
+  try {
+    const urls = SITEMAP_STATIC_PATHS.map((p) => `  <url><loc>${SITE_BASE}${p}</loc></url>`);
+    const products = queryRecords('Product', { query: { status: 'active' }, limit: 10000 });
+    for (const p of products) {
+      const lastmod = (p.updated_date || p.created_date || '').slice(0, 10);
+      urls.push(
+        `  <url><loc>${SITE_BASE}/product/${p.id}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}</url>`,
+      );
+    }
+    res.type('application/xml').send(
+      `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`,
+    );
+  } catch (e) { handleError(res, e); }
+});
+
 // ─── Serve SPA with history fallback ──────────────────────────────────────────
 if (fs.existsSync(DIST)) {
   app.use(express.static(DIST));
+  const INDEX_HTML = path.join(DIST, 'index.html');
+  // Per-product SEO/social meta: Meta's crawler and WhatsApp link previews do
+  // not execute JS, so inject OG product tags + JSON-LD server-side.
+  app.get('/product/:id', (req, res, next) => {
+    try {
+      const product = getProductById(req.params.id);
+      const template = fs.readFileSync(INDEX_HTML, 'utf8');
+      // Unknown id: serve the SPA shell (the client renders its own NotFound
+      // UI) but with a real HTTP 404 so crawlers stop indexing dead URLs.
+      if (!product) return res.status(404).type('html').send(template);
+      res.type('html').send(injectProductMeta(template, product));
+    } catch (e) {
+      console.error('[productMeta] inject failed:', e?.message);
+      next();
+    }
+  });
   app.get(/^(?!\/api\/).*/, (req, res) => {
-    res.sendFile(path.join(DIST, 'index.html'));
+    res.sendFile(INDEX_HTML);
   });
 } else {
   app.get('/', (req, res) => {

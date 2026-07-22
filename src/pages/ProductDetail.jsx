@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { MessageCircle, ShoppingCart, Truck, Shield, RotateCcw, ChevronRight, Plus, Minus, Play } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { formatPrice } from "@/lib/utils";
-import { getImagesForVariant, getImageFrameStyle, hasCrop } from "@/lib/productImages";
+import { getImagesForVariant, getImageFrameStyle, hasCrop, handleImageError } from "@/lib/productImages";
 import { getSizes, sizeId, findSize, buildOfferOptions, isAvailable, sizeAvailable, availableUnits, unitLabels } from "@/lib/pricing";
 import { trackViewContent } from "@/lib/metaPixel";
 import { sendServerCapiEvent } from "@/lib/metaServer";
@@ -206,6 +206,9 @@ export default function ProductDetail() {
                     alt={name}
                     className={`w-full h-full ${hasCrop(activeImage) ? "object-fill" : "object-cover object-center"}`}
                     style={getImageFrameStyle(activeImage)}
+                    fetchpriority="high"
+                    decoding="async"
+                    onError={handleImageError}
                   />
                   {product.video_url && (
                     <button
@@ -253,6 +256,8 @@ export default function ProductDetail() {
                       className={`w-full h-full ${hasCrop(img) ? "object-fill" : "object-cover object-center"}`}
                       style={getImageFrameStyle(img)}
                       loading="lazy"
+                      decoding="async"
+                      onError={handleImageError}
                     />
                   </button>
                 ))}
@@ -449,7 +454,7 @@ export default function ProductDetail() {
               {related.map(p => (
                 <Link key={p.id} to={`/product/${p.id}`} className="group">
                   <div className="aspect-square bg-muted rounded-2xl overflow-hidden mb-3">
-                    <img src={p.image_url} alt={isRTL ? p.name_ar : p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <img src={p.image_url} alt={isRTL ? p.name_ar : p.name} loading="lazy" decoding="async" onError={handleImageError} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   </div>
                   <p className="font-bold text-sm line-clamp-2" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
                     {isRTL ? p.name_ar : p.name}

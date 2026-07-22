@@ -10,6 +10,7 @@ import { useCart } from "@/components/useCart";
 import { useSiteSettings } from "@/components/useSiteSettings";
 import { useToast } from "@/components/ui/use-toast";
 import ProductCard from "@/components/ProductCard";
+import { handleImageError } from "@/lib/productImages";
 
 const AnimatedElement = ({ children, className = "", delay = 0, direction = "up" }) => {
   const ref = useRef(null);
@@ -79,6 +80,9 @@ function HeroSection({ t, isRTL, banner }) {
             src={heroImage}
             alt=""
             aria-hidden="true"
+            fetchpriority="high"
+            decoding="async"
+            onError={handleImageError}
             className={`w-full h-full object-cover object-center ${isRTL ? "scale-x-[-1]" : ""}`}
           />
         )}
@@ -247,6 +251,8 @@ function CategoryCardsSection({ t, isRTL, categories }) {
                     alt={isRTL ? cat.name_ar : cat.name}
                     className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
                     loading="lazy"
+                    decoding="async"
+                    onError={handleImageError}
                   />
                 ) : (
                   <div className="absolute inset-0 bg-gradient-to-br from-secondary via-muted to-secondary transition-transform duration-1000 group-hover:scale-105" />

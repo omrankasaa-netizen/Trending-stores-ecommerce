@@ -6,6 +6,36 @@
     <meta name="theme-color" content="#127a8a" />
     <title>Trending Store | ترندينج ستور</title>
     <meta name="description" content="Trending Store — smart gadgets and practical products. Cash on Delivery across Lebanon. متجر ترندينج ستور للأدوات الذكية والمنتجات العملية، الدفع عند الاستلام في كل لبنان." />
+    <meta name="author" content="Trending Store" />
+    <link rel="canonical" href="https://trending-store.com/" />
+
+    <!-- hreflang: the SPA has a client-side AR/EN toggle with no separate URLs,
+         so the alternate points at the single canonical URL. An "en" hreflang
+         is intentionally NOT declared — English routing would need dedicated
+         /en/ URLs in a future iteration before it can be. -->
+    <link rel="alternate" hreflang="x-default" href="https://trending-store.com/" />
+    <link rel="alternate" hreflang="ar" href="https://trending-store.com/" />
+
+    <!-- TRENDING_SOCIAL_META_START — the server replaces this whole region with
+         per-product OG + JSON-LD on /product/:id pages (see server/productMeta.js). -->
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Trending Store" />
+    <meta property="og:url" content="https://trending-store.com/" />
+    <meta property="og:title" content="Trending Store | ترندينج ستور" />
+    <meta property="og:description" content="Trending Store — smart gadgets and practical products. Cash on Delivery across Lebanon. متجر ترندينج ستور للأدوات الذكية والمنتجات العملية، الدفع عند الاستلام في كل لبنان." />
+    <meta property="og:image" content="https://trending-store.com/seed/hero.jpg" />
+    <meta property="og:locale" content="ar_AR" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <!-- Twitter card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Trending Store | ترندينج ستور" />
+    <meta name="twitter:description" content="Smart gadgets and practical products. Cash on Delivery across Lebanon." />
+    <meta name="twitter:image" content="https://trending-store.com/seed/hero.jpg" />
+    <!-- JSON-LD: Organization + WebSite -->
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Trending Store","alternateName":"ترندينج ستور","url":"https://trending-store.com/","logo":"https://trending-store.com/seed/hero.jpg"}</script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Trending Store","url":"https://trending-store.com/","inLanguage":["ar","en"]}</script>
+    <!-- TRENDING_SOCIAL_META_END -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Product images (Cloudflare R2) and pixels: warm the connection early
