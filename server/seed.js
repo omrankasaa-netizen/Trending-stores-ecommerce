@@ -31,13 +31,25 @@ function idFromSlug(prefix, slug) {
   return `${prefix}-${h}`;
 }
 
-// Seed admin account. Credentials can be overridden via env for production.
+// Seed admin account. In production the password MUST come from
+// MINIYO_ADMIN_PASSWORD — if it is unset we loudly SKIP admin seeding instead
+// of creating an account with a publicly known password. Outside production a
+// clearly-labeled dev-only fallback keeps local setup one-command.
 function seedAdmin() {
   const email = (process.env.MINIYO_ADMIN_EMAIL || 'admin@trending.store').toLowerCase();
   if (!findUserByEmail(email)) {
+    let password = process.env.MINIYO_ADMIN_PASSWORD;
+    if (!password) {
+      if (process.env.NODE_ENV === 'production') {
+        console.warn('[seed] MINIYO_ADMIN_PASSWORD is not set — SKIPPING admin account seeding. Set it in Railway (Service → Variables) and redeploy to create the admin account.');
+        return;
+      }
+      password = 'trending-dev-only-change-me';
+      console.warn('[seed] MINIYO_ADMIN_PASSWORD not set — using dev-only fallback password. Do NOT use in production.');
+    }
     const user = registerUser({
       email,
-      password: process.env.MINIYO_ADMIN_PASSWORD || 'TrendingAdmin2026!',
+      password,
       full_name: 'Trending Store Admin',
       role: 'admin',
     });
