@@ -3,18 +3,49 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#127a8a" />
     <title>Trending Store | ترندينج ستور</title>
     <meta name="description" content="Trending Store — smart gadgets and practical products. Cash on Delivery across Lebanon. متجر ترندينج ستور للأدوات الذكية والمنتجات العملية، الدفع عند الاستلام في كل لبنان." />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Product images (Cloudflare R2) and Meta Pixel: warm the connection early
+    <!-- Product images (Cloudflare R2) and pixels: warm the connection early
          so the first product image and pixel request skip DNS/TLS setup latency. -->
     <link rel="preconnect" href="https://pub-f5f0b1cd4f3b424fb3e1688852349e63.r2.dev" crossorigin>
+    <link rel="dns-prefetch" href="https://pub-f5f0b1cd4f3b424fb3e1688852349e63.r2.dev">
     <link rel="preconnect" href="https://connect.facebook.net">
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=Cairo:wght@300;400;500;600;700;800&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+    <link rel="dns-prefetch" href="https://connect.facebook.net">
+    <link rel="preconnect" href="https://analytics.tiktok.com" crossorigin>
+    <link rel="dns-prefetch" href="https://analytics.tiktok.com">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=Cairo:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+    <style>
+      /* Branded boot splash — replaced by React on mount.
+         Colors match src/index.css: teal #127a8a, amber #f57c00, bg #fff. */
+      .ts-splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#fff;color:#127a8a;text-align:center;padding:24px;z-index:1}
+      .ts-splash-en{font:800 clamp(22px,7vw,34px)/1.2 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.01em;direction:ltr}
+      .ts-splash-ar{font:700 clamp(17px,5vw,24px)/1.4 system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;color:#f57c00}
+      .ts-splash-bar{width:120px;height:3px;border-radius:3px;background:#e8f0f1;overflow:hidden}
+      .ts-splash-bar::after{content:"";display:block;width:40%;height:100%;border-radius:3px;background:#f57c00;animation:ts-slide 1.2s ease-in-out infinite alternate}
+      @keyframes ts-slide{from{margin-inline-start:0}to{margin-inline-start:60%}}
+      @media (prefers-reduced-motion:reduce){.ts-splash-bar::after{animation:none;width:100%;margin-inline-start:0}}
+      .ts-noscript{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#fff;color:#127a8a;text-align:center;padding:24px;z-index:2}
+      .ts-noscript b{font:700 clamp(18px,5vw,24px)/1.4 system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif}
+      .ts-noscript span{font:400 clamp(14px,4vw,17px)/1.6 system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;color:#4a5560}
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="ts-splash" role="status" aria-live="polite">
+        <div class="ts-splash-en">Trending Store</div>
+        <div class="ts-splash-ar">ترندينج ستور</div>
+        <div class="ts-splash-bar"></div>
+      </div>
+    </div>
+    <noscript>
+      <div class="ts-noscript">
+        <b>Please enable JavaScript to browse Trending Store</b>
+        <span>يرجى تفعيل الجافاسكريبت لتصفّح متجر ترندينج ستور — Smart gadgets, Cash on Delivery across Lebanon</span>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
