@@ -9,7 +9,19 @@ import {
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OTP_MAX_ATTEMPTS = 5;
 
-const JWT_SECRET = process.env.MINIYO_JWT_SECRET || 'miniyo-dev-secret-change-me';
+// JWT signing secret. Production MUST set MINIYO_JWT_SECRET — fail fast when
+// it is missing so a deploy never silently runs with a publicly known secret.
+// Outside production we fall back to a clearly-labeled dev-only value.
+const JWT_SECRET = process.env.MINIYO_JWT_SECRET || (() => {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[auth] MINIYO_JWT_SECRET is not set — refusing to start in production '
+      + 'without a real JWT secret. Set it in Railway (Service → Variables).',
+    );
+  }
+  console.warn('[auth] MINIYO_JWT_SECRET not set — using dev-only insecure fallback secret. Do NOT use in production.');
+  return 'trending-dev-only-insecure-secret';
+})();
 const COOKIE_NAME = 'miniyo_session';
 const TOKEN_TTL = '30d';
 
