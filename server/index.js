@@ -614,7 +614,9 @@ app.delete('/api/entities/:entity/:id', ensureEntity, authorizeWrite('delete'), 
   } catch (e) { handleError(res, e); }
 });
 
-app.use('/uploads', express.static(UPLOAD_DIR));
+// Uploaded files are stored under content-random filenames, so they can be
+// cached hard at the edge/browser.
+app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '30d', immutable: true }));
 
 // ─── Meta product catalog feed (public) ──────────────────────────────────────
 // A standard CSV product feed for Meta Commerce Manager / Advantage+ catalogs.
@@ -719,7 +721,22 @@ app.get('/sitemap.xml', (req, res) => {
 
 // ─── Serve SPA with history fallback ──────────────────────────────────────────
 if (fs.existsSync(DIST)) {
-  app.use(express.static(DIST));
+  // Cache policy (Lighthouse "use efficient cache lifetimes"):
+  //  • /assets/* — Vite content-hashed bundles: cache for a year, immutable.
+  //  • index.html — never cached, so deploys take effect immediately.
+  //  • everything else (seed images, icons) — 1 day.
+  const setStaticCacheHeaders = (res, filePath) => {
+    const p = filePath.replace(/\\/g, '/');
+    if (p.includes('/assets/')) {
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (p.endsWith('/index.html')) {
+      res.set('Cache-Control', 'no-cache');
+    } else {
+      res.set('Cache-Control', 'public, max-age=86400');
+    }
+  };
+
+  app.use(express.static(DIST, { setHeaders: setStaticCacheHeaders }));
   const INDEX_HTML = path.join(DIST, 'index.html');
   // Per-product SEO/social meta: Meta's crawler and WhatsApp link previews do
   // not execute JS, so inject OG product tags + JSON-LD server-side.
@@ -727,6 +744,7 @@ if (fs.existsSync(DIST)) {
     try {
       const product = getProductById(req.params.id);
       const template = fs.readFileSync(INDEX_HTML, 'utf8');
+      res.set('Cache-Control', 'no-cache');
       // Unknown id: serve the SPA shell (the client renders its own NotFound
       // UI) but with a real HTTP 404 so crawlers stop indexing dead URLs.
       if (!product) return res.status(404).type('html').send(template);
@@ -737,6 +755,7 @@ if (fs.existsSync(DIST)) {
     }
   });
   app.get(/^(?!\/api\/).*/, (req, res) => {
+    res.set('Cache-Control', 'no-cache');
     res.sendFile(INDEX_HTML);
   });
 } else {

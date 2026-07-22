@@ -178,10 +178,12 @@ export default function Footer() {
               </h4>
               <div className="flex gap-3">
                 <a href="https://www.facebook.com/people/Trending-Store/61557075004536/" target="_blank" rel="noopener noreferrer"
+                  aria-label={t("Trending Store on Facebook", "ترندينج ستور على فيسبوك")}
                   className="w-10 h-10 bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110">
                   <Facebook className="w-5 h-5 text-primary-foreground" />
                 </a>
                 <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer"
+                  aria-label={t("Chat with us on WhatsApp", "تواصل معنا عبر واتساب")}
                   className="w-10 h-10 bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110">
                   <MessageCircle className="w-5 h-5 text-primary-foreground" />
                 </a>

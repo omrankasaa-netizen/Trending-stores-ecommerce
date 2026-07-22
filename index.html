@@ -38,14 +38,17 @@
     <!-- TRENDING_SOCIAL_META_END -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Product images (Cloudflare R2 custom domain) and pixels: warm the
-         connection early so the first product image and pixel request skip
-         DNS/TLS setup latency. -->
+    <!-- Inline SVG favicon: avoids a /favicon.ico 404 (browser console error)
+         without adding a request. Teal "T", matches the brand. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23127a8a'/%3E%3Ctext x='32' y='45' font-family='Arial,sans-serif' font-size='36' font-weight='bold' fill='white' text-anchor='middle'%3ET%3C/text%3E%3C/svg%3E" />
+    <!-- LCP: preload the default hero (used whenever no admin banner is set).
+         imagesrcset/imagesizes mirror the hero <img> srcset in Home.jsx. -->
+    <link rel="preload" as="image" href="/seed/hero.jpg" imagesrcset="/seed/hero-800.jpg 800w, /seed/hero.jpg 1600w" imagesizes="100vw" fetchpriority="high">
+    <!-- Connection warming kept to the critical origins (Lighthouse warns above
+         ~4 preconnects). The ad pixels load well after first paint, so they get
+         cheap dns-prefetch only. -->
     <link rel="preconnect" href="https://images.trending-store.com" crossorigin>
-    <link rel="dns-prefetch" href="https://images.trending-store.com">
-    <link rel="preconnect" href="https://connect.facebook.net">
     <link rel="dns-prefetch" href="https://connect.facebook.net">
-    <link rel="preconnect" href="https://analytics.tiktok.com" crossorigin>
     <link rel="dns-prefetch" href="https://analytics.tiktok.com">
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=Cairo:wght@300;400;500;700;800&display=swap" rel="stylesheet">
     <style>

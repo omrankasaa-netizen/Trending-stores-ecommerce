@@ -41,6 +41,20 @@ function cfResize(url, size) {
   return `${u.origin}/cdn-cgi/image/${opts}${u.pathname}${u.search}`;
 }
 
+// Build a srcset from the sharp-generated variants so the browser can pick the
+// smallest sufficient derivative (thumb 320w / card 600w / large 1200w).
+// Returns undefined when the image has no variants (legacy single URL).
+export function imageSrcSet(image) {
+  const img = normalizeImage(image);
+  const v = img?.variants;
+  if (!v) return undefined;
+  const parts = [];
+  if (v.thumb) parts.push(`${v.thumb} 320w`);
+  if (v.card) parts.push(`${v.card} 600w`);
+  if (v.large) parts.push(`${v.large} 1200w`);
+  return parts.length ? parts.join(", ") : undefined;
+}
+
 // Attach to an <img onError={...}>.
 // If the site ever routes images through Cloudflare's /cdn-cgi/image/ resize
 // proxy (see cfResize), a cold edge cache can error and leave the image broken;

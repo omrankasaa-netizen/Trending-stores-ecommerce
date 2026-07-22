@@ -83,7 +83,7 @@ export default function Header() {
             <div className="flex items-center justify-end gap-3 flex-1">
               {/* Search */}
               <Link to="/search" className="hidden sm:block">
-                <Button variant="ghost" size="icon" className="text-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors">
+                <Button variant="ghost" size="icon" aria-label={t("Search", "بحث")} className="text-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors">
                   <Search className="w-5 h-5" />
                 </Button>
               </Link>
@@ -95,7 +95,7 @@ export default function Header() {
               </Button>
 
               {/* WhatsApp */}
-              <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="hidden sm:block">
+              <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" aria-label={t("Chat with us on WhatsApp", "تواصل معنا عبر واتساب")} className="hidden sm:block">
                 <Button variant="ghost" size="icon" className="text-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors">
                   <MessageCircle className="w-5 h-5" />
                 </Button>
@@ -170,6 +170,7 @@ export default function Header() {
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label={t("Open cart", "افتح السلة")}
                 className="relative rounded-full text-foreground hover:bg-primary/10 hover:text-primary transition-colors"
                 onClick={() => setCartOpen(true)}
               >
@@ -184,7 +185,7 @@ export default function Header() {
               {/* Mobile Menu */}
               <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                 <SheetTrigger asChild className="lg:hidden">
-                  <Button variant="ghost" size="icon" className="rounded-full text-foreground hover:bg-muted">
+                  <Button variant="ghost" size="icon" aria-label={t("Open menu", "افتح القائمة")} className="rounded-full text-foreground hover:bg-muted">
                     <Menu className="w-6 h-6" />
                   </Button>
                 </SheetTrigger>
@@ -253,6 +254,7 @@ export default function Header() {
         rel="noopener noreferrer"
         className={`fixed bottom-6 ${isRTL ? "left-6" : "right-6"} z-50 w-14 h-14 bg-[#25D366] rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-all duration-300`}
         title="WhatsApp"
+        aria-label={t("Chat with us on WhatsApp", "تواصل معنا عبر واتساب")}
       >
         <MessageCircle className="w-7 h-7 text-white" fill="currentColor" />
       </a>
