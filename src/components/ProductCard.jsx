@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
-import { getProductImages, getImageFrameStyle, hasCrop, imageSrc } from "@/lib/productImages";
+import { getProductImages, getImageFrameStyle, hasCrop, imageSrc, handleImageError } from "@/lib/productImages";
 import { getSizes, getTiers, isAvailable, getDisplayPrice } from "@/lib/pricing";
 
 const WHATSAPP = "96181751841";
@@ -28,6 +28,7 @@ function CardImage({ image, alt, eager }) {
       style={getImageFrameStyle(image)}
       loading={eager ? "eager" : "lazy"}
       decoding="async"
+      onError={handleImageError}
       draggable={false}
     />
   );
