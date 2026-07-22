@@ -1,0 +1,36 @@
+# Trending Store
+
+> Trending Store (trending-store.com) is an online shop based in Tripoli,
+> Lebanon, selling smart gadgets and practical everyday products (tools, home,
+> garden, electronics, pest control). Delivery across Lebanon with Cash on
+> Delivery. The storefront is bilingual (Arabic first / English), with full RTL
+> support.
+
+## Storefront
+
+- [Homepage](https://trending-store.com/): hero offers, featured categories, trending products
+- [Shop all products](https://trending-store.com/shop): full catalog with category filters and search
+- [Search](https://trending-store.com/search): product search
+- [About](https://trending-store.com/about): store info
+- [FAQ](https://trending-store.com/faq): delivery, payment and returns answers
+- [Delivery info](https://trending-store.com/delivery): coverage and timing
+- [Contact](https://trending-store.com/contact): WhatsApp, phone and email
+
+## Product data
+
+- [Meta catalog feed (CSV)](https://trending-store.com/meta-feed.csv): full product feed — id (SKU), title, description, price USD, availability, image link, product page link
+- [Sitemap](https://trending-store.com/sitemap.xml): all indexable pages and active products
+- Product pages live at `https://trending-store.com/product/{id}` and carry OpenGraph product tags plus JSON-LD Product schema (price, availability).
+
+## Policies
+
+- Payment: Cash on Delivery across Lebanon; no card required.
+- Delivery: nationwide Lebanon.
+- Support: WhatsApp +961 81 751 841 and support@trending-stores.com.
+- Legal pages: [Privacy](https://trending-store.com/privacy), [Terms](https://trending-store.com/terms), [Shipping](https://trending-store.com/shipping), [Returns](https://trending-store.com/returns).
+
+## Notes for agents
+
+- Prices are in USD; Cash on Delivery is settled at delivery.
+- Images are served from the images.trending-store.com CDN (Cloudflare R2) as sharp-generated WebP variants (thumb/card/large).
+- The storefront is Arabic-first (RTL) with a full English toggle; most content has Arabic and English variants (fields suffixed `_ar`).

@@ -91,14 +91,14 @@ export default function CartDrawer({ open, onClose, cart, updateQty, removeFromC
                     )}
                     <p className="text-primary font-bold mt-1">{formatPrice(item.price)}</p>
                     <div className="flex items-center gap-2 mt-2">
-                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg" disabled={isOffer} onClick={() => updateQty(key, item.quantity - 1)}>
+                      <Button variant="outline" size="icon" aria-label={t("Decrease quantity", "إنقاص الكمية")} className="h-7 w-7 rounded-lg" disabled={isOffer} onClick={() => updateQty(key, item.quantity - 1)}>
                         <Minus className="w-3 h-3" />
                       </Button>
                       <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
-                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg" disabled={isOffer} onClick={() => updateQty(key, item.quantity + 1)}>
+                      <Button variant="outline" size="icon" aria-label={t("Increase quantity", "زيادة الكمية")} className="h-7 w-7 rounded-lg" disabled={isOffer} onClick={() => updateQty(key, item.quantity + 1)}>
                         <Plus className="w-3 h-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive ml-auto" onClick={() => removeFromCart(key)}>
+                      <Button variant="ghost" size="icon" aria-label={t("Remove item", "إزالة العنصر")} className="h-7 w-7 text-destructive ml-auto" onClick={() => removeFromCart(key)}>
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>

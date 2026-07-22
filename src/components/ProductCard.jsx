@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
-import { getProductImages, getImageFrameStyle, hasCrop, imageSrc, handleImageError } from "@/lib/productImages";
+import { getProductImages, getImageFrameStyle, hasCrop, imageSrc, imageSrcSet, handleImageError } from "@/lib/productImages";
 import { getSizes, getTiers, isAvailable, getDisplayPrice } from "@/lib/pricing";
 
 const WHATSAPP = "96181751841";
@@ -23,7 +23,11 @@ function CardImage({ image, alt, eager }) {
   return (
     <img
       src={imageSrc(image, "card") || "https://placehold.co/600x800?text=Product"}
+      srcSet={imageSrcSet(image)}
+      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 350px"
       alt={alt}
+      width={600}
+      height={800}
       className={`w-full h-full ${cropped ? "object-fill" : "object-cover object-center"} transition-transform duration-500 group-hover:scale-105`}
       style={getImageFrameStyle(image)}
       loading={eager ? "eager" : "lazy"}
@@ -203,6 +207,7 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
                 <Button
                   variant="outline"
                   disabled={outOfStock}
+                  aria-label={isRTL ? "اختر المقاس/العرض" : "Choose size/offer"}
                   className="rounded-xl h-10 px-3 border-primary text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
                   title={isRTL ? "اختر المقاس/العرض" : "Choose size/offer"}
                 >
@@ -213,6 +218,7 @@ export default function ProductCard({ product, isRTL, onAddToCart }) {
               <Button
                 variant="outline"
                 disabled={outOfStock}
+                aria-label={isRTL ? "أضف إلى السلة" : "Add to cart"}
                 className="rounded-xl h-10 px-3 border-primary text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
                 onClick={() => onAddToCart(product)}
               >

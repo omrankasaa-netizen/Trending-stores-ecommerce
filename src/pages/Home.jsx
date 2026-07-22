@@ -10,7 +10,7 @@ import { useCart } from "@/components/useCart";
 import { useSiteSettings } from "@/components/useSiteSettings";
 import { useToast } from "@/components/ui/use-toast";
 import ProductCard from "@/components/ProductCard";
-import { handleImageError } from "@/lib/productImages";
+import { handleImageError, cmsImageSrc } from "@/lib/productImages";
 
 const AnimatedElement = ({ children, className = "", delay = 0, direction = "up" }) => {
   const ref = useRef(null);
@@ -72,12 +72,25 @@ function HeroSection({ t, isRTL, banner }) {
   // right, so we mirror the image to keep the empty space behind the text.
   const heroImage = banner?.image_url || "/seed/hero.jpg";
 
+  // Responsive LCP: ship an 800px hero to phones instead of the 1600px file.
+  // CMS banner images use the sharp-generated WebP variants (thumb/card/large);
+  // the committed seed hero uses a pre-generated 800px sibling. The matching
+  // <link rel="preload" imagesrcset> in index.html covers the seed default.
+  const isSeedHero = !banner?.image_url;
+  const heroSrcSet = isSeedHero
+    ? "/seed/hero-800.jpg 800w, /seed/hero.jpg 1600w"
+    : `${cmsImageSrc(heroImage, "card")} 600w, ${cmsImageSrc(heroImage, "large")} 1200w`;
+
   return (
     <section className="relative w-full min-h-[70vh] flex items-center justify-center overflow-hidden bg-secondary/40" style={{ direction: isRTL ? "rtl" : "ltr" }}>
       <div className="absolute inset-0 z-0">
         {heroImage && (
           <img
             src={heroImage}
+            srcSet={heroSrcSet}
+            sizes="100vw"
+            width="1600"
+            height="877"
             alt=""
             aria-hidden="true"
             fetchpriority="high"
