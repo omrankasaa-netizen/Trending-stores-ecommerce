@@ -1,39 +1,59 @@
-**Welcome to your Base44 project** 
+# Trending Store — ترندينج ستور
 
-**About**
+Bilingual (English / العربية) gadget e-commerce store for Lebanon, live at
+**[trending-store.com](https://trending-store.com)**. Cash-on-delivery ordering
+over WhatsApp, with an admin panel for catalog, orders, and site content.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+## Stack
 
-This project contains everything you need to run your app locally.
+- **Frontend:** React 18 + Vite + Tailwind CSS (RTL Arabic support)
+- **Backend:** Node.js + Express + better-sqlite3 (file database)
+- **Hosting:** Railway with a persistent volume for the SQLite database
+- **Media:** Cloudflare R2 object storage (optional — falls back to local disk)
+- **Email:** Resend (transactional email; optional)
+- **Analytics:** Meta Pixel + Conversions API, TikTok Pixel + Events API (all optional)
 
-**Edit the code in your local development environment**
+## Setup
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
-
-**Prerequisites:** 
-
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
-
-```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+```bash
+npm install
+cp .env.example .env   # fill in the values you need (never commit .env)
 ```
 
-Run the app: `npm run dev`
+Run the frontend and backend in separate terminals:
 
-**Publish your changes**
+```bash
+npm run dev      # Vite dev server (frontend)
+npm run server   # Express API server (backend)
+```
 
-Open [Base44.com](http://Base44.com) and click on Publish.
+Production build and start:
 
-**Docs & Support**
+```bash
+npm run build
+npm start
+```
 
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
+Tests:
 
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+```bash
+npm test         # node --test tests/
+```
+
+## Admin account
+
+The admin account is seeded automatically on first boot from environment
+variables — there is **no default password in production**:
+
+- `MINIYO_ADMIN_EMAIL` — admin login email (default `admin@trending.store`)
+- `MINIYO_ADMIN_PASSWORD` — **required in production**; if unset, admin seeding
+  is skipped with a loud warning
+
+Set them as Railway variables (Service → Variables). See `SECURITY.md` for the
+full secret-handling policy and `.env.example` for every supported variable.
+
+## Security
+
+Secrets are never committed. This repo runs gitleaks secret scanning on every
+push and PR (see `.github/workflows/secret-scan.yml`) and ships an optional
+pre-commit hook (`.pre-commit-config.yaml`). See `SECURITY.md`.
