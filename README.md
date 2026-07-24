@@ -11,7 +11,7 @@ over WhatsApp, with an admin panel for catalog, orders, and site content.
 - **Hosting:** Railway with a persistent volume for the SQLite database
 - **Media:** Cloudflare R2 object storage (optional — falls back to local disk)
 - **Email:** Resend (transactional email; optional)
-- **Analytics:** Meta Pixel + Conversions API, TikTok Pixel + Events API (all optional)
+- **Analytics:** GA4, Meta Pixel + Conversions API, TikTok Pixel + Events API (all optional)
 
 ## Setup
 
@@ -51,6 +51,13 @@ variables — there is **no default password in production**:
 
 Set them as Railway variables (Service → Variables). See `SECURITY.md` for the
 full secret-handling policy and `.env.example` for every supported variable.
+
+## Tracking docs
+
+- `docs/ANALYTICS_TRACKING.md` — GA4 event mapping, UTM normalization/persistence,
+  and Meta/TikTok browser+server dedup rules.
+- `docs/META_TRACKING.md` — Meta Pixel + CAPI + feed details.
+- `docs/TIKTOK_TRACKING.md` — TikTok Pixel + Events API details.
 
 ## Security
 

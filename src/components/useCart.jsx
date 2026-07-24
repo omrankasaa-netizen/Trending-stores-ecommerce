@@ -4,6 +4,7 @@ import { sendServerCapiEvent } from "@/lib/metaServer";
 import { trackTiktokAddToCart } from "@/lib/tiktokPixel";
 import { sendTiktokServerEvent } from "@/lib/tiktokServer";
 import { productContentId } from "@/lib/metaShared";
+import { trackGa4AddToCart } from "@/lib/ga4";
 import { getStorageItem, setStorageItem } from "@/lib/safeStorage";
 
 const CART_KEY = "ts_cart";
@@ -80,6 +81,7 @@ export function useCart() {
     // it fires once regardless of which page triggered it. No-op without pixel
     // id / consent. The server-side CAPI twin reuses the SAME event_id for dedup.
     const eventId = trackAddToCart({ product: { ...product, price: unitPrice }, quantity: qty, value: unitPrice });
+    trackGa4AddToCart({ product: { ...product, price: unitPrice }, quantity: qty, value: unitPrice });
     const cid = productContentId(product);
     const q = Math.max(1, Number(qty) || 1);
     sendServerCapiEvent({

@@ -18,6 +18,8 @@ import { sendServerCapiEvent } from "@/lib/metaServer";
 import { trackTiktokInitiateCheckout, trackTiktokPurchase, newTiktokEventId } from "@/lib/tiktokPixel";
 import { sendTiktokServerEvent } from "@/lib/tiktokServer";
 import { buildContents } from "@/lib/metaShared";
+import { trackGa4BeginCheckout, trackGa4Purchase } from "@/lib/ga4";
+import { checkoutAttributionFields } from "@/lib/utmAttribution";
 
 const WHATSAPP_FALLBACK = "96181751841";
 function genOrderNum() { return "TS-" + Date.now().toString().slice(-6); }
@@ -105,6 +107,7 @@ export default function Checkout() {
     if (cart.length > 0) {
       // Browser Pixel + server-side CAPI twin share one event_id for dedup.
       const eventId = trackInitiateCheckout({ items: cart, value: total });
+      trackGa4BeginCheckout({ items: cart, value: total });
       const { contents, content_ids } = buildContents(cart);
       sendServerCapiEvent({
         event_name: "InitiateCheckout",
@@ -251,6 +254,7 @@ export default function Checkout() {
         total,
         status: "pending",
         payment_method: "cod",
+        ...checkoutAttributionFields(),
       });
     } catch (err) {
       const msg = err?.status === 409
@@ -271,6 +275,12 @@ export default function Checkout() {
     const purchaseEventId = newEventId();
     const purchaseValue = Number(order?.total ?? total) || 0;
     trackPurchase({ items: cart, value: purchaseValue, eventId: purchaseEventId });
+    trackGa4Purchase({
+      orderId: order?.id,
+      transactionId: order?.order_number || oNum,
+      value: purchaseValue,
+      items: cart,
+    });
 
     // TikTok CompletePayment — separate event_id (independent dedup namespace).
     // Browser Pixel + server Events API share this id so TikTok dedupes the pair.
