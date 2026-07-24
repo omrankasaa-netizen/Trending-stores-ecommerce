@@ -16,6 +16,7 @@ import { cartHasFreeDelivery, availableStock, findSize } from "@/lib/pricing";
 import { trackInitiateCheckout, trackPurchase, newEventId } from "@/lib/metaPixel";
 import { sendServerCapiEvent } from "@/lib/metaServer";
 import { trackTiktokInitiateCheckout, trackTiktokPurchase, newTiktokEventId } from "@/lib/tiktokPixel";
+import { sendTiktokServerEvent } from "@/lib/tiktokServer";
 import { buildContents } from "@/lib/metaShared";
 
 const WHATSAPP_FALLBACK = "96181751841";
@@ -113,7 +114,17 @@ export default function Checkout() {
         value: Number(total) || undefined,
       });
       // TikTok InitiateCheckout twin — separate event_id (independent dedup namespace).
-      trackTiktokInitiateCheckout({ items: cart, value: total });
+      const ttEventId = trackTiktokInitiateCheckout({ items: cart, value: total });
+      sendTiktokServerEvent({
+        event_name: "InitiateCheckout",
+        event_id: ttEventId,
+        contents: contents.map((c) => ({
+          content_id: c.id,
+          quantity: c.quantity,
+          price: c.item_price,
+        })),
+        value: Number(total) || undefined,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

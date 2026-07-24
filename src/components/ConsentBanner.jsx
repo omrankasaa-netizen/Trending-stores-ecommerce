@@ -7,18 +7,21 @@ import {
   grantConsent,
   denyConsent,
 } from "@/lib/metaPixel";
-import { initTiktokPixel, trackTiktokPageView } from "@/lib/tiktokPixel";
+import { initTiktokPixel, isTiktokPixelConfigured, trackTiktokPageView } from "@/lib/tiktokPixel";
 
-// Bilingual cookie/tracking consent banner. It only appears when a Meta Pixel
-// is actually configured AND the shopper has not decided yet. Accepting loads +
-// activates the pixel; declining stores the choice and never loads it. If no
-// pixel is configured, this renders nothing (silent no-op).
+// Bilingual cookie/tracking consent banner. It only appears when at least one
+// ad pixel (Meta or TikTok) is configured AND the shopper has not decided yet.
+// Accepting loads + activates the configured pixels; declining stores the
+// choice and never loads them. If neither pixel is configured, this renders
+// nothing (silent no-op).
 export default function ConsentBanner() {
   const { t, isRTL } = useLanguage();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (isPixelConfigured() && !hasConsentDecision()) setVisible(true);
+    if ((isPixelConfigured() || isTiktokPixelConfigured()) && !hasConsentDecision()) {
+      setVisible(true);
+    }
   }, []);
 
   if (!visible) return null;

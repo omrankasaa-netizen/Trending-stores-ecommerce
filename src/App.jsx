@@ -7,17 +7,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import Login from './pages/Login';
-import Register from './pages/Register';
 import Home from './pages/Home';
-import Shop from './pages/Shop';
-import ProductDetail from './pages/ProductDetail';
-import About from './pages/About';
-import Delivery from './pages/Delivery';
-import Contact from './pages/Contact';
-import Search from './pages/Search';
-import CmsPage from './pages/CmsPage';
-import Faq from './pages/Faq';
 import Layout from './components/Layout';
 import ScrollToTop from './components/ScrollToTop';
 
@@ -26,6 +16,16 @@ import ScrollToTop from './components/ScrollToTop';
 // entire admin panel are lazy-loaded to keep the initial bundle small. Each
 // becomes its own chunk fetched only when the route is visited.
 const Checkout = lazy(() => import('./pages/Checkout'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Shop = lazy(() => import('./pages/Shop'));
+const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+const About = lazy(() => import('./pages/About'));
+const Delivery = lazy(() => import('./pages/Delivery'));
+const Contact = lazy(() => import('./pages/Contact'));
+const Search = lazy(() => import('./pages/Search'));
+const CmsPage = lazy(() => import('./pages/CmsPage'));
+const Faq = lazy(() => import('./pages/Faq'));
 const AccountLayout = lazy(() => import('./pages/account/AccountLayout'));
 const ProfilePage = lazy(() => import('./pages/account/ProfilePage'));
 const OrderHistoryPage = lazy(() => import('./pages/account/OrderHistoryPage'));

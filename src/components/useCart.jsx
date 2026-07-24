@@ -4,11 +4,12 @@ import { sendServerCapiEvent } from "@/lib/metaServer";
 import { trackTiktokAddToCart } from "@/lib/tiktokPixel";
 import { sendTiktokServerEvent } from "@/lib/tiktokServer";
 import { productContentId } from "@/lib/metaShared";
+import { getStorageItem, setStorageItem } from "@/lib/safeStorage";
 
 const CART_KEY = "ts_cart";
 
 function readCart() {
-  try { return JSON.parse(localStorage.getItem(CART_KEY) || "[]"); } catch { return []; }
+  try { return JSON.parse(getStorageItem(CART_KEY) || "[]"); } catch { return []; }
 }
 
 // A cart line is uniquely identified by product + chosen size + chosen offer so
@@ -35,7 +36,7 @@ export function useCart() {
   }, []);
 
   const saveCart = useCallback((newCart) => {
-    localStorage.setItem(CART_KEY, JSON.stringify(newCart));
+    setStorageItem(CART_KEY, JSON.stringify(newCart));
     setCart(newCart);
     window.dispatchEvent(new Event("cart-update"));
   }, []);

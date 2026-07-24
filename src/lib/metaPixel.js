@@ -10,6 +10,7 @@
 //    metaShared so they match the catalog feed and server events exactly.
 
 import { META_CURRENCY, productContentId, buildContents } from "./metaShared.js";
+import { getStorageItem, setStorageItem } from "./safeStorage.js";
 
 const PIXEL_ID = import.meta.env.VITE_META_PIXEL_ID || "";
 const CONSENT_KEY = "ts_meta_consent"; // "granted" | "denied" (absent = undecided)
@@ -25,11 +26,7 @@ export function isPixelConfigured() {
 }
 
 export function getConsent() {
-  try {
-    return localStorage.getItem(CONSENT_KEY) || "";
-  } catch {
-    return "";
-  }
+  return getStorageItem(CONSENT_KEY) || "";
 }
 
 export function hasConsentDecision() {
@@ -75,13 +72,13 @@ export function initMetaPixel() {
 }
 
 export function grantConsent() {
-  try { localStorage.setItem(CONSENT_KEY, "granted"); } catch { /* ignore */ }
+  setStorageItem(CONSENT_KEY, "granted");
   initMetaPixel();
   trackPageView();
 }
 
 export function denyConsent() {
-  try { localStorage.setItem(CONSENT_KEY, "denied"); } catch { /* ignore */ }
+  setStorageItem(CONSENT_KEY, "denied");
 }
 
 // Generate a dedup id shared between the Pixel event and the CAPI event.

@@ -10,17 +10,17 @@
 // cookie; a Bearer token (stored in localStorage for OTP/social flows) is also
 // sent when present.
 
+import { getStorageItem, setStorageItem, removeStorageItem } from "@/lib/safeStorage";
+
 const TOKEN_KEY = 'ts_access_token';
 
 function getToken() {
-  try { return localStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
+  return getStorageItem(TOKEN_KEY) || null;
 }
 
 function setToken(token) {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch { /* ignore */ }
+  if (token) setStorageItem(TOKEN_KEY, token);
+  else removeStorageItem(TOKEN_KEY);
 }
 
 async function request(method, url, body) {
