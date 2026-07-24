@@ -16,6 +16,7 @@ import { sendServerCapiEvent } from "@/lib/metaServer";
 import { trackTiktokViewContent } from "@/lib/tiktokPixel";
 import { sendTiktokServerEvent } from "@/lib/tiktokServer";
 import { productContentId } from "@/lib/metaShared";
+import { trackGa4ViewItem } from "@/lib/ga4";
 
 const WHATSAPP = "96181751841";
 
@@ -51,6 +52,7 @@ export default function ProductDetail() {
         // Fire the browser Pixel and the server-side CAPI twin with the SAME
         // event_id so Meta deduplicates them into one ViewContent.
         const eventId = trackViewContent(p, { value: p.price });
+        trackGa4ViewItem(p, { value: p.price });
         const cid = productContentId(p);
         sendServerCapiEvent({
           event_name: "ViewContent",

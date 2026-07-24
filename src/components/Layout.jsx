@@ -5,6 +5,8 @@ import Footer from "./Footer.jsx";
 import ConsentBanner from "./ConsentBanner.jsx";
 import { initMetaPixel, trackPageView } from "@/lib/metaPixel";
 import { initTiktokPixel, trackTiktokPageView } from "@/lib/tiktokPixel";
+import { initGa4, trackGa4PageView } from "@/lib/ga4";
+import { captureUtmAttribution } from "@/lib/utmAttribution";
 
 export default function Layout() {
   const location = useLocation();
@@ -15,12 +17,23 @@ export default function Layout() {
   useEffect(() => {
     initMetaPixel();
     initTiktokPixel();
+    initGa4();
   }, []);
 
   useEffect(() => {
+    captureUtmAttribution({
+      search: location.search,
+      path: `${location.pathname}${location.search || ""}`,
+      href: typeof window !== "undefined" ? window.location.href : "",
+    });
     trackPageView();
     trackTiktokPageView();
-  }, [location.pathname]);
+    trackGa4PageView({
+      path: `${location.pathname}${location.search || ""}`,
+      title: typeof document !== "undefined" ? document.title : "",
+      location: typeof window !== "undefined" ? window.location.href : "",
+    });
+  }, [location.pathname, location.search]);
 
   return (
     <div className="bg-background text-foreground min-h-screen flex flex-col">
