@@ -206,7 +206,7 @@ export default function ProductDetail() {
                     alt={name}
                     className={`w-full h-full ${hasCrop(activeImage) ? "object-fill" : "object-cover object-center"}`}
                     style={getImageFrameStyle(activeImage)}
-                    fetchpriority="high"
+                    fetchPriority="high"
                     decoding="async"
                     onError={handleImageError}
                   />

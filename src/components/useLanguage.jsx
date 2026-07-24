@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
+import { getStorageItem, setStorageItem } from "@/lib/safeStorage";
 
 export function useLanguage() {
-  const [lang, setLang] = useState(() => localStorage.getItem("ts_lang") || "ar");
+  const [lang, setLang] = useState(() => getStorageItem("ts_lang") || "ar");
 
   const toggleLang = () => {
     const next = lang === "ar" ? "en" : "ar";
-    localStorage.setItem("ts_lang", next);
+    setStorageItem("ts_lang", next);
     setLang(next);
     window.location.reload();
   };

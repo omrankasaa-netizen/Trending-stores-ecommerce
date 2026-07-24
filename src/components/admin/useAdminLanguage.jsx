@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { getStorageItem, setStorageItem } from "@/lib/safeStorage";
 
 const STORAGE_KEY = "trending-admin-lang";
 const AdminLanguageContext = createContext(null);
 
 function readStoredLang() {
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = getStorageItem(STORAGE_KEY);
   return stored === "en" ? "en" : "ar";
 }
 
@@ -19,7 +20,7 @@ export function AdminLanguageProvider({ children }) {
 
   const setLanguage = useCallback((next) => {
     const value = next === "en" ? "en" : "ar";
-    localStorage.setItem(STORAGE_KEY, value);
+    setStorageItem(STORAGE_KEY, value);
     setLang(value);
   }, []);
 

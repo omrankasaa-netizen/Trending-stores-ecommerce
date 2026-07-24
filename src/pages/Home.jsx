@@ -93,7 +93,7 @@ function HeroSection({ t, isRTL, banner }) {
             height="877"
             alt=""
             aria-hidden="true"
-            fetchpriority="high"
+            fetchPriority="high"
             decoding="async"
             onError={handleImageError}
             className={`w-full h-full object-cover object-center ${isRTL ? "scale-x-[-1]" : ""}`}
