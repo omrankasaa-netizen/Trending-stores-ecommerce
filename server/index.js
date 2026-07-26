@@ -102,6 +102,9 @@ function handleError(res, e) {
   res.status(status).json({ error: e?.message || 'Internal error' });
 }
 
+// ─── Health check (public, no auth, no DB) ───────────────────────────────────
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
 // ─── Auth routes ──────────────────────────────────────────────────────────────
 app.get('/api/auth/me', (req, res) => {
   const user = getUserFromRequest(req);
