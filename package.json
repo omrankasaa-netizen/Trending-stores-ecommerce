@@ -12,7 +12,8 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
-    "test": "node --test \"tests/*.test.js\""
+    "test": "node --test \"tests/*.test.js\"",
+    "warm-cache": "node scripts/warm-cache.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",

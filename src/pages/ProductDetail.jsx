@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/useLanguage";
@@ -19,6 +19,32 @@ import { productContentId } from "@/lib/metaShared";
 import { trackGa4ViewItem } from "@/lib/ga4";
 
 const WHATSAPP = "96181751841";
+const PRELOADED_PRODUCT_KEY = "__PRELOADED_PRODUCT__";
+
+function hasRequiredPreloadedProduct(product) {
+  return !!(
+    product &&
+    typeof product === "object" &&
+    product.id &&
+    (product.name || product.name_ar) &&
+    (product.price != null || product.compare_at_price != null)
+  );
+}
+
+function getPreloadedProductForRoute(routeId) {
+  if (typeof window === "undefined") return null;
+  const payload = window[PRELOADED_PRODUCT_KEY];
+  if (!payload || typeof payload !== "object") return null;
+  const base = payload.product;
+  if (!hasRequiredPreloadedProduct(base)) return null;
+  if (base.id !== routeId && base.slug !== routeId) return null;
+  const hydrated = { ...base };
+  if (Array.isArray(payload.productImages) && payload.productImages.length > 0) hydrated.images = payload.productImages;
+  if (Array.isArray(payload.productVariants) && payload.productVariants.length > 0) hydrated.sizes = payload.productVariants;
+  const reviewCount = Number(payload.publishedReviewsCount);
+  if (Number.isFinite(reviewCount)) hydrated.published_reviews_count = reviewCount;
+  return hydrated;
+}
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -34,6 +60,43 @@ export default function ProductDetail() {
   const [activeImg, setActiveImg] = useState(0);
   const [selectedSizeId, setSelectedSizeId] = useState("");
   const [selectedOfferKey, setSelectedOfferKey] = useState("single");
+  const trackedProductIdRef = useRef(null);
+
+  const trackProductView = useCallback((p) => {
+    if (!p || !p.id || trackedProductIdRef.current === p.id) return;
+    trackedProductIdRef.current = p.id;
+    // Fire the browser pixel and the server-side twin with one dedupe id.
+    const eventId = trackViewContent(p, { value: p.price });
+    trackGa4ViewItem(p, { value: p.price });
+    const cid = productContentId(p);
+    sendServerCapiEvent({
+      event_name: "ViewContent",
+      event_id: eventId,
+      content_ids: cid ? [cid] : [],
+      value: Number(p.price) || undefined,
+    });
+    const ttEventId = trackTiktokViewContent(p, { value: p.price });
+    sendTiktokServerEvent({
+      event_name: "ViewContent",
+      event_id: ttEventId,
+      contents: cid ? [{ content_id: cid, content_name: p?.name || p?.name_ar, quantity: 1, price: Number(p.price) || undefined }] : [],
+      value: Number(p.price) || undefined,
+    });
+  }, []);
+
+  const loadRelatedProducts = useCallback((p) => {
+    if (!p?.category) return;
+    base44.entities.Product.filter({ category: p.category, status: "active" }, "-created_date", 10)
+      .then(items => setRelated((items || []).filter(i => i.id !== p.id).slice(0, 4)))
+      .catch(() => {});
+  }, []);
+
+  const applyLoadedProduct = useCallback((p) => {
+    if (!p) return;
+    setProduct(p);
+    const sizes = getSizes(p);
+    if (sizes.length > 0) setSelectedSizeId(sizeId(sizes[0]));
+  }, []);
 
   useEffect(() => {
     // Navigating between two /product/:id routes (e.g. via the "You may also
@@ -45,38 +108,37 @@ export default function ProductDetail() {
     setQty(1);
     setSelectedOfferKey("single");
     setSelectedSizeId("");
-    base44.entities.Product.filter({ id }).then(([p]) => {
-      setProduct(p);
+    const preloaded = getPreloadedProductForRoute(id);
+    if (preloaded) {
+      applyLoadedProduct(preloaded);
       setLoading(false);
-      if (p) {
-        // Fire the browser Pixel and the server-side CAPI twin with the SAME
-        // event_id so Meta deduplicates them into one ViewContent.
-        const eventId = trackViewContent(p, { value: p.price });
-        trackGa4ViewItem(p, { value: p.price });
-        const cid = productContentId(p);
-        sendServerCapiEvent({
-          event_name: "ViewContent",
-          event_id: eventId,
-          content_ids: cid ? [cid] : [],
-          value: Number(p.price) || undefined,
-        });
-        // TikTok ViewContent twin — a SEPARATE event_id (independent dedup namespace).
-        const ttEventId = trackTiktokViewContent(p, { value: p.price });
-        sendTiktokServerEvent({
-          event_name: "ViewContent",
-          event_id: ttEventId,
-          contents: cid ? [{ content_id: cid, content_name: p?.name || p?.name_ar, quantity: 1, price: Number(p.price) || undefined }] : [],
-          value: Number(p.price) || undefined,
-        });
+      trackProductView(preloaded);
+      loadRelatedProducts(preloaded);
+    }
+    (async () => {
+      try {
+        let p = (await base44.entities.Product.filter({ id }, null, 1))?.[0] || null;
+        if (!p) p = (await base44.entities.Product.filter({ slug: id }, null, 1))?.[0] || null;
+        if (!p) {
+          setLoading(false);
+          if (!preloaded) setProduct(null);
+          return;
+        }
+        const merged = {
+          ...p,
+          images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (preloaded?.images || p.images),
+          sizes: Array.isArray(p.sizes) && p.sizes.length > 0 ? p.sizes : (preloaded?.sizes || p.sizes),
+          published_reviews_count: p.published_reviews_count ?? preloaded?.published_reviews_count ?? p.published_reviews_count,
+        };
+        applyLoadedProduct(merged);
+        setLoading(false);
+        trackProductView(merged);
+        loadRelatedProducts(merged);
+      } catch {
+        setLoading(false);
       }
-      const sizes = getSizes(p);
-      if (sizes.length > 0) setSelectedSizeId(sizeId(sizes[0]));
-      if (p?.category) {
-        base44.entities.Product.filter({ category: p.category, status: "active" }, "-created_date", 5)
-          .then(items => setRelated(items.filter(i => i.id !== p.id).slice(0, 4)));
-      }
-    }).catch(() => setLoading(false));
-  }, [id]);
+    })();
+  }, [id, applyLoadedProduct, loadRelatedProducts, trackProductView]);
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">

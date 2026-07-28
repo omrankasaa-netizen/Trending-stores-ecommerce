@@ -10,7 +10,7 @@
 // index.html (TRENDING_SOCIAL_META_START/END) is replaced so no
 // duplicate/conflicting og:type or canonical is left behind.
 
-import { getRecord } from './db.js';
+import { getRecord, queryRecords } from './db.js';
 import { getGlobalMarkupPct } from './functions.js';
 import { applyMarkup, markupPctForProduct } from '../src/lib/pricing.js';
 import { productContentId, META_CURRENCY } from '../src/lib/metaShared.js';
@@ -34,10 +34,120 @@ function escapeAttr(value) {
 export function getProductById(id) {
   if (!id || typeof id !== 'string') return null;
   try {
-    return getRecord('Product', id) || null;
+    return getRecord('Product', id)
+      || queryRecords('Product', { query: { slug: id }, limit: 1 })[0]
+      || null;
   } catch {
     return null;
   }
+}
+
+function pickPublicProduct(product) {
+  return {
+    id: product.id,
+    slug: product.slug || null,
+    name: product.name || null,
+    name_ar: product.name_ar || null,
+    short_description: product.short_description || null,
+    short_description_ar: product.short_description_ar || null,
+    description: product.description || null,
+    description_ar: product.description_ar || null,
+    image_url: product.image_url || null,
+    status: product.status || null,
+    category: product.category || null,
+    has_variants: !!product.has_variants,
+    price: product.price ?? null,
+    compare_at_price: product.compare_at_price ?? null,
+    free_delivery: !!product.free_delivery,
+    video_url: product.video_url || null,
+    images: Array.isArray(product.images) ? product.images : [],
+    sizes: Array.isArray(product.sizes) ? product.sizes : [],
+  };
+}
+
+function pickPublicProductImage(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    id: row.id || null,
+    product_id: row.product_id || null,
+    url: row.url || row.image_url || null,
+    alt: row.alt || null,
+    display_order: row.display_order ?? null,
+    focal: row.focal || null,
+    crop: row.crop || null,
+    variants: row.variants || null,
+    is_primary: row.is_primary ?? null,
+  };
+}
+
+function pickPublicProductVariant(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    id: row.id || null,
+    product_id: row.product_id || null,
+    sku: row.sku || null,
+    label: row.label || null,
+    label_ar: row.label_ar || null,
+    price: row.price ?? null,
+    compare_at_price: row.compare_at_price ?? null,
+    stock_quantity: row.stock_quantity ?? null,
+    image: row.image || null,
+    images: Array.isArray(row.images) ? row.images : [],
+    is_active: row.is_active ?? null,
+    display_order: row.display_order ?? null,
+  };
+}
+
+function loadProductImages(product) {
+  try {
+    const rows = queryRecords('ProductImage', { query: { product_id: product.id }, sort: 'display_order', limit: 50 });
+    const picked = rows.map(pickPublicProductImage).filter(Boolean);
+    if (picked.length > 0) return picked;
+  } catch {
+    // ProductImage may not exist in all deployments; fall back to embedded product data.
+  }
+  const embedded = Array.isArray(product.images)
+    ? product.images.map((img) => pickPublicProductImage(typeof img === 'string' ? { url: img } : img)).filter(Boolean)
+    : [];
+  if (embedded.length > 0) return embedded;
+  if (product.image_url) return [{ id: null, product_id: product.id, url: product.image_url, alt: null, display_order: 0, focal: null, crop: null, variants: null, is_primary: true }];
+  return [];
+}
+
+function loadProductVariants(product) {
+  try {
+    const rows = queryRecords('ProductVariant', { query: { product_id: product.id }, sort: 'display_order', limit: 50 });
+    const picked = rows.map(pickPublicProductVariant).filter(Boolean);
+    if (picked.length > 0) return picked;
+  } catch {
+    // ProductVariant may not exist in all deployments; fall back to embedded product data.
+  }
+  return Array.isArray(product.sizes)
+    ? product.sizes.map((v) => pickPublicProductVariant(v)).filter(Boolean)
+    : [];
+}
+
+function loadPublishedReviewsCount(product) {
+  try {
+    const reviews = queryRecords('Review', { query: { product_id: product.id }, limit: 500 });
+    return reviews.filter((r) => r && (
+      r.status === 'published'
+      || r.is_published === true
+      || r.is_active === true
+      || r.approved === true
+    )).length;
+  } catch {
+    return 0;
+  }
+}
+
+function buildPreloadedProductPayload(product) {
+  return {
+    product: pickPublicProduct(product),
+    productImages: loadProductImages(product),
+    productVariants: loadProductVariants(product),
+    publishedReviewsCount: loadPublishedReviewsCount(product),
+  };
 }
 
 // Meta only auto-populates a catalog entry when it can read a numeric price.
@@ -130,6 +240,9 @@ export function buildProductMetaBlock(product) {
   };
   const productJson = JSON.stringify(productSubset).replace(/</g, '\\u003c');
   lines.push(`<script>window.__PRODUCT__=${productJson};</script>`);
+  // Hydration payload for the product page to avoid first-load API waterfalls.
+  const preloadedJson = JSON.stringify(buildPreloadedProductPayload(product)).replace(/</g, '\\u003c');
+  lines.push(`<script>window.__PRELOADED_PRODUCT__=${preloadedJson};</script>`);
 
   // JSON-LD Product schema.
   const jsonLd = {
