@@ -88,7 +88,7 @@ export function buildRequestUserData(ctx = {}) {
 // object; never throws; silent no-op when Meta env is unset. Purchase is
 // rejected — it stays on the dedicated authoritative path.
 export async function sendCapiEvent({
-  eventName, eventId, sourceUrl, contents, contentIds, value, userData,
+  eventName, eventId, sourceUrl, contents, contentIds, value, userData, eventTime,
 } = {}) {
   if (!isCapiConfigured()) return { ok: false, skipped: true, reason: "not_configured" };
   if (!isEventAllowed(eventName)) return { ok: false, skipped: true, reason: "event_not_allowed" };
@@ -118,13 +118,23 @@ export async function sendCapiEvent({
 
   const event = {
     event_name: eventName,
-    event_time: Math.floor(Date.now() / 1000),
+    event_time: Number.isFinite(Number(eventTime)) ? Math.floor(Number(eventTime)) : Math.floor(Date.now() / 1000),
     event_id: eventId || undefined,
     action_source: "website",
     user_data: userData || {},
     custom_data,
   };
   if (sourceUrl) event.event_source_url = sourceUrl;
+  // DEBUG: set META_DEBUG=true to verify outgoing event_time values in Test Events.
+  if (process.env.META_DEBUG === 'true') {
+    console.log('[metaCapi:DEBUG]', {
+      event_name: event.event_name,
+      event_time: event.event_time,
+      event_time_utc: new Date(event.event_time * 1000).toISOString(),
+      fbc_attached: !!userData?.fbc,
+      event_id: eventId ?? null,
+    });
+  }
 
   const payload = { data: [event] };
   const code = testEventCode();
@@ -153,7 +163,30 @@ export async function sendCapiPurchase({ order, eventId }) {
   if (!order) return { ok: false, skipped: true, reason: "no_order" };
 
   const { contents, content_ids } = buildContents(order.items);
-  const eventTime = Math.floor(Date.now() / 1000);
+  // DB convention: nowIso() = new Date().toISOString() — always UTC with 'Z'.
+  // Defensive: append 'Z' when the stored string has no timezone marker so
+  // Date.parse() never silently interprets it as local time (Lebanon UTC+3
+  // would push event_time 3 hours into the future vs Meta UTC).
+  const nowSec = Math.floor(Date.now() / 1000);
+  let eventTime = nowSec;
+  if (order.created_date) {
+    const raw = String(order.created_date);
+    // Keep existing tz marker (Z / +HH:MM / -HH:MM); append 'Z' only when absent.
+    const utcStr = /[Zz]|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : `${raw}Z`;
+    const parsed = Math.floor(Date.parse(utcStr) / 1000);
+    if (Number.isFinite(parsed)) eventTime = parsed;
+  }
+  // Clamp: Meta rejects events >7 days in the past or >60s in the future.
+  const SEVEN_DAYS_SEC = 7 * 24 * 60 * 60;
+  if (eventTime < nowSec - SEVEN_DAYS_SEC || eventTime > nowSec + 60) {
+    console.warn('[metaCapi] Purchase event_time outside Meta window — using now', {
+      order_id: order.id,
+      stored_event_time: eventTime,
+      stored_event_time_iso: new Date(eventTime * 1000).toISOString(),
+      now_sec: nowSec,
+    });
+    eventTime = nowSec;
+  }
 
   const payload = {
     data: [
