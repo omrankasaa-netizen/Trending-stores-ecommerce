@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 // Hides the destructive "Reseed Catalog" button from the admin UI. The backend
 // endpoint / client method stay intact — flip to true to re-enable the button.
@@ -27,6 +29,7 @@ export default function AdminSettings() {
   const [reseeding, setReseeding] = useState(false);
   const { toast } = useToast();
   const { t, dir } = useAdminLanguage();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     base44.entities.SiteSettings.list("-created_date", 100).then(items => {
@@ -47,8 +50,9 @@ export default function AdminSettings() {
 
   const saveAll = async () => {
     // Reject negative / non-numeric delivery fee and markup before saving.
-    if (form.delivery_fee !== "" && form.delivery_fee != null) {
-      const fee = Number(form.delivery_fee);
+    const feeInput = form.delivery_fee == null ? "" : String(form.delivery_fee).trim();
+    if (feeInput !== "") {
+      const fee = Number(feeInput);
       if (!Number.isFinite(fee) || fee < 0) {
         toast({ title: t("Delivery fee must be a valid number (0 or more)", "رسوم التوصيل يجب أن تكون رقماً صحيحاً (0 أو أكثر)"), variant: "destructive" });
         return;
@@ -63,7 +67,8 @@ export default function AdminSettings() {
     }
     setSaving(true);
     try {
-      for (const [key, value] of Object.entries(form)) {
+      const formToSave = { ...form, delivery_fee: feeInput };
+      for (const [key, value] of Object.entries(formToSave)) {
         const existing = settings[key];
         if (existing?.id) {
           await base44.entities.SiteSettings.update(existing.id, { value });
@@ -74,6 +79,13 @@ export default function AdminSettings() {
       }
       // Persist the hidden global markup (reversible; base prices are never mutated).
       await base44.functions.saveMarkupConfig({ global_pct: markupPct === "" ? 0 : Number(markupPct) });
+      // Keep checkout/storefront config in sync right after admin saves.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.siteSettingsPublic }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.siteSettingsAdmin }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.shippingZonesCheckout }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.shippingZonesAdmin }),
+      ]);
       toast({ title: t("✅ Settings saved successfully", "✅ تم حفظ الإعدادات بنجاح") });
     } catch (err) {
       toast({ title: t("Failed to save settings", "تعذّر حفظ الإعدادات"), description: err?.message || "", variant: "destructive" });

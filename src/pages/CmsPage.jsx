@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/useLanguage";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 // Renders a single CmsSection (legal/about page) by section_key. Bilingual:
 // shows body_ar/title_ar when the UI is in Arabic, otherwise the English body.
@@ -9,18 +10,13 @@ import { useLanguage } from "@/components/useLanguage";
 // never blank, and admins can edit them via the Content area.
 export default function CmsPage({ sectionKey, fallbackTitle, fallbackTitleAr }) {
   const { isRTL } = useLanguage();
-  const [section, setSection] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { data: sections, isLoading: loading } = useQuery({
+    queryKey: QUERY_KEYS.cmsSectionsAll,
+    queryFn: () => base44.entities.CmsSection.list("section_key", 100),
+    staleTime: 5 * 60 * 1000,
+  });
+  const section = (sections || []).find((s) => s?.section_key === sectionKey) || null;
   const font = { fontFamily: isRTL ? "'Cairo', sans-serif" : undefined };
-
-  useEffect(() => {
-    let alive = true;
-    base44.entities.CmsSection.filter({ section_key: sectionKey }, null, 1)
-      .then((rows) => { if (alive) setSection(Array.isArray(rows) ? rows[0] : null); })
-      .catch(() => { if (alive) setSection(null); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [sectionKey]);
 
   const title = isRTL
     ? (section?.title_ar || fallbackTitleAr || fallbackTitle)

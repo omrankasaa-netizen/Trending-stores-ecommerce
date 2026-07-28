@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { Plus, Edit2, Trash2, Image } from "lucide-react";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 const EMPTY_BANNER = { headline: "", headline_ar: "", subtext: "", subtext_ar: "", button_text: "", button_text_ar: "", link_target: "/shop", image_url: "", display_order: 0, is_visible: true };
 
@@ -24,6 +26,7 @@ export default function AdminContent() {
   const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
   const { t, lang, dir } = useAdminLanguage();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     Promise.all([
@@ -85,6 +88,10 @@ export default function AdminContent() {
       setSettings(prev => ({ ...prev, [key]: { id: created.id, value } }));
     }
     setSettings(prev => ({ ...prev, [key]: { ...prev[key], value } }));
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.siteSettingsPublic }),
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.siteSettingsAdmin }),
+    ]);
     toast({ title: t("✅ Setting saved", "✅ تم حفظ الإعداد") });
   };
 
@@ -158,7 +165,7 @@ export default function AdminContent() {
 
         {/* Legal / About pages (CmsSection) */}
         <TabsContent value="pages">
-          <CmsPagesTab toast={toast} />
+          <CmsPagesTab toast={toast} queryClient={queryClient} />
         </TabsContent>
       </Tabs>
 
@@ -221,7 +228,7 @@ export default function AdminContent() {
 
 // Editor for legal/about pages stored as CmsSection rows (seeded server-side).
 // Lets admins edit bilingual title + markdown body and toggle visibility.
-function CmsPagesTab({ toast }) {
+function CmsPagesTab({ toast, queryClient }) {
   const { t, lang, dir } = useAdminLanguage();
   const [sections, setSections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -249,6 +256,10 @@ function CmsPagesTab({ toast }) {
         body: form.body, body_ar: form.body_ar,
         is_visible: form.is_visible !== false,
       });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cmsSectionsAll }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cmsSectionsAdmin }),
+      ]);
       toast({ title: t("✅ Page saved", "✅ تم حفظ الصفحة") });
       setEditing(null);
       load();

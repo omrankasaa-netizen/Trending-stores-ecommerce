@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 const DEFAULTS = {
   whatsapp_number: "96181751841",
@@ -14,7 +15,7 @@ const DEFAULTS = {
 // delivery fee, etc.) from here instead of hardcoding values.
 export function useSiteSettings() {
   const { data, isLoading } = useQuery({
-    queryKey: ["site-settings"],
+    queryKey: QUERY_KEYS.siteSettingsPublic,
     queryFn: async () => {
       const rows = await base44.entities.SiteSettings.list();
       const map = {};
