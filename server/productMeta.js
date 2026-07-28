@@ -114,6 +114,23 @@ export function buildProductMetaBlock(product) {
   if (socialDesc) lines.push(`<meta name="twitter:description" content="${escapeAttr(socialDesc)}" />`);
   lines.push(`<meta name="twitter:image" content="${escapeAttr(image)}" />`);
 
+  // Inject window.__PRODUCT__ so the React SPA can skip the initial product
+  // fetch on first render, eliminating the ~650ms waterfall on product pages.
+  const productSubset = {
+    id: product.id,
+    slug: product.slug || null,
+    name: product.name || null,
+    name_ar: product.name_ar || null,
+    short_description: product.short_description || null,
+    price_usd: product.price_usd ?? null,
+    compare_at_price_usd: product.compare_at_price_usd || null,
+    image_url: product.image_url || null,
+    status: product.status || null,
+    has_variants: product.has_variants || false,
+  };
+  const productJson = JSON.stringify(productSubset).replace(/</g, '\\u003c');
+  lines.push(`<script>window.__PRODUCT__=${productJson};</script>`);
+
   // JSON-LD Product schema.
   const jsonLd = {
     '@context': 'https://schema.org/',
