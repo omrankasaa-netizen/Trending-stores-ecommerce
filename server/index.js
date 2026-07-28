@@ -494,19 +494,24 @@ function applyProductMarkupForReader(product, user) {
 // All other routes (auth, orders, customers, carts, admin, mutations) keep
 // whatever cache behavior they already have (no-store).
 const CATALOG_CACHE_ENTITIES = new Set([
-  'CmsSection', 'SiteSetting', 'Category', 'Product', 'ProductImage',
+  'CmsSection', 'SiteSettings', 'SiteSetting', 'ShippingZone', 'Category', 'Product', 'ProductImage',
   'ProductVariant', 'Collection', 'Review', 'Discount', 'Campaign',
 ]);
 
+function setEntityReadCacheHeaders(req, res, user) {
+  const isCatalog = CATALOG_CACHE_ENTITIES.has(req.params.entity);
+  // Admin reads should never be cacheable so settings/inventory edits reflect immediately.
+  if (isCatalog && !isAdmin(user)) {
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    return;
+  }
+  res.set('Cache-Control', 'no-store');
+}
+
 app.get('/api/entities/:entity', ensureEntity, authorizeRead, (req, res) => {
   try {
-    if (CATALOG_CACHE_ENTITIES.has(req.params.entity)) {
-      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-    } else {
-      // Dynamic or sensitive data — never let a browser/proxy cache serve a stale copy.
-      res.set('Cache-Control', 'no-store');
-    }
     const user = getUserFromRequest(req);
+    setEntityReadCacheHeaders(req, res, user);
     const { query, sort, limit } = parseListParams(req);
     const isProduct = req.params.entity === 'Product';
     const records = queryRecords(req.params.entity, { query, sort, limit })
@@ -518,12 +523,8 @@ app.get('/api/entities/:entity', ensureEntity, authorizeRead, (req, res) => {
 
 app.get('/api/entities/:entity/:id', ensureEntity, authorizeRead, (req, res) => {
   try {
-    if (CATALOG_CACHE_ENTITIES.has(req.params.entity)) {
-      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-    } else {
-      res.set('Cache-Control', 'no-store');
-    }
     const user = getUserFromRequest(req);
+    setEntityReadCacheHeaders(req, res, user);
     const record = getRecord(req.params.entity, req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
     let out = redactMoney(req.params.entity, sanitize(req.params.entity, record), user);
