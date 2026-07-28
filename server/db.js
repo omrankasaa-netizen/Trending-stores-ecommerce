@@ -101,6 +101,14 @@ export function initSchema() {
     );
   `);
   db.exec(`CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);`);
+
+  // Performance: expression indexes on the most-queried JSON doc fields.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_Product_slug            ON e_Product    (json_extract(doc,'$.slug'))`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_Product_status          ON e_Product    (json_extract(doc,'$.status'))`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_CmsSection_section_key  ON e_CmsSection (json_extract(doc,'$.section_key'))`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_Category_is_active      ON e_Category   (json_extract(doc,'$.is_active'))`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_Discount_is_active      ON e_Discount   (json_extract(doc,'$.is_active'))`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_Order_customer_id       ON e_Order      (json_extract(doc,'$.customer_id'))`);
 }
 
 function rowToRecord(row) {
@@ -207,14 +215,56 @@ function applySort(records, sort) {
   return desc ? sorted.reverse() : sorted;
 }
 
+// JSON field names are always safe identifiers set by application code, but
+// guard against any adversarially-crafted query key.
+const SAFE_FIELD = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 // Generic query used by both list() and filter(). Returns an array.
+// Uses SQL WHERE pushdown when all filter keys are safe identifiers so SQLite
+// can exploit expression indexes instead of a full table scan.
 export function queryRecords(entity, { query = {}, sort = null, limit = null } = {}) {
   const table = tableFor(entity);
-  const rows = db.prepare(`SELECT * FROM ${table}`).all();
-  let records = rows.map(rowToRecord);
-  if (query && Object.keys(query).length > 0) {
-    records = records.filter((r) => matchesFilter(r, query));
+  const queryEntries = Object.entries(query || {}).filter(([, v]) => v !== undefined);
+
+  let rows;
+  if (queryEntries.length === 0) {
+    rows = db.prepare(`SELECT * FROM ${table}`).all();
+  } else {
+    const allSafe = queryEntries.every(([k]) => k === 'id' || k === '_id' || SAFE_FIELD.test(k));
+    if (!allSafe) {
+      rows = db.prepare(`SELECT * FROM ${table}`).all();
+      let records = rows.map(rowToRecord).filter((r) => matchesFilter(r, query));
+      if (sort) records = applySort(records, sort);
+      if (limit != null && Number.isFinite(Number(limit))) records = records.slice(0, Number(limit));
+      return records;
+    }
+
+    const whereParts = [];
+    const params = [];
+
+    for (const [key, val] of queryEntries) {
+      if (key === 'id' || key === '_id') {
+        whereParts.push('id = ?');
+        params.push(val);
+      } else if (Array.isArray(val)) {
+        if (val.length === 0) return [];
+        const ph = val.map(() => '?').join(', ');
+        whereParts.push(`CAST(json_extract(doc, '$.${key}') AS TEXT) IN (${ph})`);
+        params.push(...val.map((v) => String(v ?? '')));
+      } else {
+        whereParts.push(
+          `(json_extract(doc, '$.${key}') = ? OR CAST(json_extract(doc, '$.${key}') AS TEXT) = ?)`
+        );
+        params.push(val, String(val ?? ''));
+      }
+    }
+
+    rows = db.prepare(
+      `SELECT * FROM ${table} WHERE ${whereParts.join(' AND ')}`
+    ).all(...params);
   }
+
+  let records = rows.map(rowToRecord);
   if (sort) records = applySort(records, sort);
   if (limit != null && Number.isFinite(Number(limit))) {
     records = records.slice(0, Number(limit));
