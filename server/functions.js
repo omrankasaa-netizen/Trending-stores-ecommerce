@@ -1049,6 +1049,8 @@ async function metaTrackEvent({ event_name, event_id, source_url, content_ids, c
   return await sendCapiEvent({
     eventName: event_name,
     eventId: event_id,
+    // always use server time for browser-origin track events
+    eventTime: Math.floor(Date.now() / 1000),
     sourceUrl: source_url,
     contents,
     contentIds: content_ids,
