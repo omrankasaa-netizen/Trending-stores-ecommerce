@@ -488,11 +488,24 @@ function applyProductMarkupForReader(product, user) {
   return out;
 }
 
+// ── Catalog cache headers ────────────────────────────────────────────────────
+// Sets public cache headers on GET requests for read-only catalog entities.
+// Cloudflare / CDN will cache these at the edge (max-age=60s, SWR=300s).
+// All other routes (auth, orders, customers, carts, admin, mutations) keep
+// whatever cache behavior they already have (no-store).
+const CATALOG_CACHE_ENTITIES = new Set([
+  'CmsSection', 'SiteSetting', 'Category', 'Product', 'ProductImage',
+  'ProductVariant', 'Collection', 'Review', 'Discount', 'Campaign',
+]);
+
 app.get('/api/entities/:entity', ensureEntity, authorizeRead, (req, res) => {
   try {
-    // Dynamic catalog data — never let a browser/proxy cache serve a stale copy,
-    // so admin changes appear on the storefront without a manual hard refresh.
-    res.set('Cache-Control', 'no-store');
+    if (CATALOG_CACHE_ENTITIES.has(req.params.entity)) {
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    } else {
+      // Dynamic or sensitive data — never let a browser/proxy cache serve a stale copy.
+      res.set('Cache-Control', 'no-store');
+    }
     const user = getUserFromRequest(req);
     const { query, sort, limit } = parseListParams(req);
     const isProduct = req.params.entity === 'Product';
@@ -505,7 +518,11 @@ app.get('/api/entities/:entity', ensureEntity, authorizeRead, (req, res) => {
 
 app.get('/api/entities/:entity/:id', ensureEntity, authorizeRead, (req, res) => {
   try {
-    res.set('Cache-Control', 'no-store');
+    if (CATALOG_CACHE_ENTITIES.has(req.params.entity)) {
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    } else {
+      res.set('Cache-Control', 'no-store');
+    }
     const user = getUserFromRequest(req);
     const record = getRecord(req.params.entity, req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
