@@ -17,7 +17,7 @@ const ToastViewport = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
     className={cn(
-      "pointer-events-none fixed top-0 right-0 z-[100] flex max-h-screen w-full flex-col gap-2 p-4 sm:max-w-[420px]",
+      "pointer-events-none fixed inset-x-0 top-0 z-[100] flex max-h-screen w-full flex-col gap-2 p-4 sm:left-auto sm:right-0 sm:max-w-[420px]",
       className
     )}
     {...props}
