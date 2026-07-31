@@ -1275,6 +1275,28 @@ function editOrder({ order_id, items: newItems, note }, user) {
   }
 }
 
+// ─── Delete a cancelled order (admin) ────────────────────────────────────────
+// Hard-deletes the order document. Restricted to cancelled orders: anything
+// live holds reservations/commit state that must go through cancelOrder.
+function deleteOrder({ order_id }, user) {
+  if (!order_id) return { _status: 400, error: 'order_id is required' };
+  const order = getRecord('Order', order_id);
+  if (!order) return { _status: 404, error: 'Order not found' };
+  if (order.status !== 'cancelled') return { _status: 409, error: 'Only cancelled orders can be deleted' };
+  deleteRecord('Order', order_id);
+  try {
+    createRecord('AuditLog', {
+      action: 'deleted',
+      entity: 'Order',
+      entity_id: order_id,
+      details: `${order.order_number || order_id} (cancelled order deleted)`,
+      user_name: user?.email || 'admin',
+      created_at: nowIso(),
+    });
+  } catch { /* audit is best-effort */ }
+  return { ok: true };
+}
+
 const REGISTRY = {
   commitStock,
   cancelOrder,
@@ -1304,6 +1326,7 @@ const REGISTRY = {
   exportProductsCsv,
   exportInventoryCsv,
   cleanupCategories,
+  deleteOrder,
 };
 
 // ─── Centralized authorization ───────────────────────────────────────────────
@@ -1322,6 +1345,7 @@ const GUARDS = {
   tiktokTrackEvent: 'public',
   cancelOrder: 'admin',
   editOrder: 'admin',
+  deleteOrder: 'admin',
   getMarkupConfig: 'admin',
   saveMarkupConfig: 'admin',
   getMyOrders: 'auth',

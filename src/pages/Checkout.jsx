@@ -37,11 +37,26 @@ export default function Checkout() {
   const { cart, subtotal, clearCart } = useCart();
   const { whatsappNumber, deliveryFee: settingsDelivery } = useSiteSettings();
   const { user, isAuthenticated } = useAuth();
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", notes: "" });
-  const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY);
+  // ── Checkout draft persistence ──────────────────────────────────────────
+  // Going back to the cart to fix a mistake used to lose everything typed
+  // here. The draft (contact/address fields) is kept in sessionStorage and
+  // restored on return; cleared on success.
+  const DRAFT_KEY = "trending_checkout_draft_v1";
+  const [savedDraft] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY)) || {}; } catch { return {}; }
+  });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", notes: "", ...(savedDraft.form || {}) });
+  const [phoneCountry, setPhoneCountry] = useState(savedDraft.phoneCountry || DEFAULT_COUNTRY);
   const [phoneError, setPhoneError] = useState("");
-  const [phoneHasWhatsApp, setPhoneHasWhatsApp] = useState(true);
-  const [altLebanesePhone, setAltLebanesePhone] = useState("");
+  const [phoneHasWhatsApp, setPhoneHasWhatsApp] = useState(savedDraft.phoneHasWhatsApp !== false);
+  const [altLebanesePhone, setAltLebanesePhone] = useState(savedDraft.altLebanesePhone || "");
+
+  // Save the draft on every change (survives cart trips, not tab close).
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ form, phoneCountry, phoneHasWhatsApp, altLebanesePhone }));
+    } catch { /* storage full/blocked — non-fatal */ }
+  }, [form, phoneCountry, phoneHasWhatsApp, altLebanesePhone]);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [orderNum, setOrderNum] = useState("");
@@ -354,6 +369,7 @@ export default function Checkout() {
       ]);
     } catch { /* automation failures must not break checkout */ }
 
+    sessionStorage.removeItem(DRAFT_KEY);
     setOrderNum(oNum);
     setSubmitted(true);
     clearCart();
@@ -401,9 +417,14 @@ export default function Checkout() {
   return (
     <div className="min-h-screen bg-background" style={{ direction: isRTL ? "rtl" : "ltr" }}>
       <div className="max-w-5xl mx-auto px-4 sm:px-8 py-12">
-        <h1 className="text-3xl font-black mb-8" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
-          {t("Checkout", "إتمام الطلب")}
-        </h1>
+        <div className="flex items-center justify-between gap-3 mb-8">
+          <h1 className="text-3xl font-black" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+            {t("Checkout", "إتمام الطلب")}
+          </h1>
+          <Link to="/cart" className="text-sm font-bold text-primary hover:underline shrink-0">
+            {t("← Edit cart (your details are saved)", "← عدّل السلة (معلوماتك محفوظة)")}
+          </Link>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-10">
           {/* Form */}

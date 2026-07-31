@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Trash2, Loader2 } from "lucide-react";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 const STATUS_CONFIG = {
@@ -26,6 +26,24 @@ export default function AdminOrders() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [activeOnly, setActiveOnly] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+
+  async function handleDeleteOrder(e, order) {
+    e.stopPropagation();
+    if (!window.confirm(t(`Delete ${order.order_number || "this order"} permanently? This cannot be undone.`, `حذف ${order.order_number || "هذا الطلب"} نهائياً؟ لا يمكن التراجع.`))) return;
+    setDeletingId(order.id);
+    try {
+      const res = await base44.functions.invoke("deleteOrder", { order_id: order.id });
+      const payload = res?.data || res;
+      if (!payload?.ok) throw new Error(payload?.error || "Delete failed");
+      setOrders(prev => prev.filter(o => o.id !== order.id));
+    } catch (err) {
+      alert(err?.data?.data?.error || err?.data?.error || err.message || "Delete failed");
+    } finally {
+      setDeletingId(null);
+    }
+  }
   const navigate = useNavigate();
   const { t, lang, isRTL, dir } = useAdminLanguage();
 
@@ -47,7 +65,8 @@ export default function AdminOrders() {
       (o.customer_name || "").toLowerCase().includes(q) ||
       (o.customer_phone || "").includes(q);
     const matchStatus = filterStatus === "all" || o.status === filterStatus;
-    return matchSearch && matchStatus;
+    const matchActive = !activeOnly || filterStatus !== "all" || !["cancelled", "delivered", "returned"].includes(o.status);
+    return matchSearch && matchStatus && matchActive;
   });
 
   return (
@@ -76,6 +95,13 @@ export default function AdminOrders() {
               style={{ direction: isRTL ? "rtl" : "ltr" }}
             />
           </div>
+          <button
+            onClick={() => setActiveOnly(v => !v)}
+            title={t("Hide cancelled, delivered and returned orders", "إخفاء الطلبات الملغاة والمسلّمة والمعادة")}
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border ${activeOnly ? "bg-primary/10 border-primary/30 text-primary" : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+          >
+            {activeOnly ? t("Active only ✓", "النشطة فقط ✓") : t("All orders", "كل الطلبات")}
+          </button>
           <div className="flex flex-wrap gap-2">
             {[["all", t("All", "الكل")], ...Object.entries(STATUS_CONFIG).map(([v, c]) => [v, t(c.labelEn, c.labelAr)])].map(([val, label]) => (
               <button
@@ -102,10 +128,13 @@ export default function AdminOrders() {
               {filtered.map(order => {
                 const sc = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
                 return (
-                  <button
+                  <div
                     key={order.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => navigate(`/admin/orders/${order.id}`)}
-                    className={`w-full px-4 py-4 hover:bg-gray-50 transition-colors flex items-center gap-4 ${isRTL ? "text-right" : "text-left"}`}
+                    onKeyDown={(e) => { if (e.key === "Enter") navigate(`/admin/orders/${order.id}`); }}
+                    className={`w-full px-4 py-4 hover:bg-gray-50 transition-colors flex items-center gap-4 cursor-pointer ${isRTL ? "text-right" : "text-left"}`}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -127,7 +156,17 @@ export default function AdminOrders() {
                       <div className="font-black text-lg text-foreground">{formatPrice(order.total)}</div>
                       <div className="text-xs text-muted-foreground">{formatDate(order.created_date)}</div>
                     </div>
-                  </button>
+                    {order.status === "cancelled" && (
+                      <button
+                        onClick={(e) => handleDeleteOrder(e, order)}
+                        disabled={deletingId === order.id}
+                        title={t("Delete this cancelled order permanently", "حذف هذا الطلب الملغى نهائياً")}
+                        className="flex-shrink-0 p-2 rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40"
+                      >
+                        {deletingId === order.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
