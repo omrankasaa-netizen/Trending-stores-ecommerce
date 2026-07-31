@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/useLanguage";
+import CountryCodeSelect from "@/components/checkout/CountryCodeSelect";
+import { DEFAULT_COUNTRY, findCountry, validateNationalNumber, toE164, stripTrunkZero } from "@/lib/countryCodes";
 import { useCart } from "@/components/useCart";
 import { useSiteSettings } from "@/components/useSiteSettings";
 import { useAuth } from "@/lib/AuthContext";
@@ -36,6 +38,10 @@ export default function Checkout() {
   const { whatsappNumber, deliveryFee: settingsDelivery } = useSiteSettings();
   const { user, isAuthenticated } = useAuth();
   const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", notes: "" });
+  const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY);
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneHasWhatsApp, setPhoneHasWhatsApp] = useState(true);
+  const [altLebanesePhone, setAltLebanesePhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [orderNum, setOrderNum] = useState("");
@@ -171,8 +177,8 @@ export default function Checkout() {
       return `• ${nm}${extra ? ` (${extra})` : ""} x${i.quantity} = ${formatPrice(i.price * i.quantity)}`;
     });
     const msg = isRTL
-      ? `🛒 طلب جديد #${oNum}\nالاسم: ${form.name}\nالهاتف: ${form.phone}\nالعنوان: ${form.city}, ${form.address}\n\nالمنتجات:\n${lines.join("\n")}\n\nالمجموع: ${formatPrice(total)}\nالدفع: عند الاستلام`
-      : `🛒 New Order #${oNum}\nName: ${form.name}\nPhone: ${form.phone}\nAddress: ${form.city}, ${form.address}\n\nItems:\n${lines.join("\n")}\n\nTotal: ${formatPrice(total)}\nPayment: Cash on Delivery`;
+      ? `🛒 طلب جديد #${oNum}\nالاسم: ${form.name}\nالهاتف: ${normalizedPhone}\nالعنوان: ${form.city}, ${form.address}\n\nالمنتجات:\n${lines.join("\n")}\n\nالمجموع: ${formatPrice(total)}\nالدفع: عند الاستلام`
+      : `🛒 New Order #${oNum}\nName: ${form.name}\nPhone: ${normalizedPhone}\nAddress: ${form.city}, ${form.address}\n\nItems:\n${lines.join("\n")}\n\nTotal: ${formatPrice(total)}\nPayment: Cash on Delivery`;
     return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`;
   };
 
@@ -208,6 +214,42 @@ export default function Checkout() {
     e.preventDefault();
     setLoading(true);
     setStockError("");
+    setPhoneError("");
+
+    // Per-country phone validation (expat customers abroad order with their
+    // foreign SIM). form.phone holds the national digits only; the dial code
+    // lives in phoneCountry. The courier works inside Lebanon, so a foreign
+    // number needs WhatsApp on it or a local Lebanese fallback.
+    const activeCountry = findCountry(phoneCountry) || findCountry(DEFAULT_COUNTRY);
+    const phoneCheck = validateNationalNumber(activeCountry, form.phone);
+    if (!phoneCheck.ok) {
+      const lenMsg = phoneCheck.min === phoneCheck.max ? `${phoneCheck.min}` : `${phoneCheck.min}–${phoneCheck.max}`;
+      setPhoneError(t(
+        `Please enter a valid ${activeCountry.name} number (${lenMsg} digits after +${activeCountry.dial})`,
+        `يرجى إدخال رقم صحيح (${lenMsg} أرقام بعد +${activeCountry.dial})`
+      ));
+      setLoading(false);
+      return;
+    }
+    const isLebanese = activeCountry.iso === "LB";
+    if (!isLebanese && !phoneHasWhatsApp && !altLebanesePhone.trim()) {
+      setPhoneError(t(
+        "Please confirm this number has WhatsApp, or add a Lebanese number so the delivery courier can reach you.",
+        "يرجى تأكيد أن هذا الرقم يتوفر على واتساب، أو إضافة رقم لبناني ليتمكن موظف التوصيل من التواصل معك."
+      ));
+      setLoading(false);
+      return;
+    }
+    if (altLebanesePhone.trim() && !/^\d{8}$/.test(stripTrunkZero(altLebanesePhone))) {
+      setPhoneError(t(
+        "The Lebanese courier number must be 8 digits (e.g. 70123456).",
+        "الرقم اللبناني لشركة التوصيل يجب أن يتكون من 8 أرقام (مثال: 70123456)."
+      ));
+      setLoading(false);
+      return;
+    }
+    const normalizedPhone = toE164(activeCountry, form.phone);
+    const normalizedAltLebanese = altLebanesePhone.trim() ? `+961${stripTrunkZero(altLebanesePhone)}` : "";
 
     // Pre-check availability so the shopper is warned before we attempt to place.
     const shortage = await revalidateStock();
@@ -240,7 +282,10 @@ export default function Checkout() {
       order = await base44.entities.Order.create({
         order_number: oNum,
         customer_name: form.name,
-        customer_phone: form.phone,
+        customer_phone: normalizedPhone,
+        phone_country: activeCountry.iso,
+        phone_has_whatsapp: isLebanese ? true : phoneHasWhatsApp,
+        alt_lebanese_phone: normalizedAltLebanese,
         customer_email: orderEmail,
         customer_address: form.address,
         customer_city: form.city,
@@ -407,9 +452,59 @@ export default function Checkout() {
                 </div>
                 <div>
                   <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Phone Number *", "رقم الهاتف *")}</Label>
-                  <Input value={form.phone} onChange={e => updateForm("phone", e.target.value)} required type="tel" inputMode="tel" autoComplete="tel" className={`mt-1.5 ${inputClass}`} />
+                  <div className={`mt-1.5 flex items-center rounded-xl border border-input bg-background h-10`}>
+                    <CountryCodeSelect value={phoneCountry} onChange={(iso) => { setPhoneCountry(iso); setPhoneError(""); }} />
+                    <input
+                      value={form.phone}
+                      onChange={e => {
+                        const active = findCountry(phoneCountry) || findCountry(DEFAULT_COUNTRY);
+                        updateForm("phone", stripTrunkZero(e.target.value).slice(0, active.len[1]));
+                        setPhoneError("");
+                      }}
+                      required
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      dir="ltr"
+                      className="w-full px-3 bg-transparent text-sm h-10 outline-none"
+                    />
+                  </div>
+                  {phoneError && <p className="text-xs text-red-600 mt-1">{phoneError}</p>}
                 </div>
               </div>
+              {(findCountry(phoneCountry) || findCountry(DEFAULT_COUNTRY)).iso !== "LB" && (
+                <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-2.5">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={phoneHasWhatsApp}
+                      onChange={(e) => setPhoneHasWhatsApp(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-xs">
+                      {t("This number has WhatsApp — my order can be confirmed there", "هذا الرقم يتوفر على واتساب — يمكن تأكيد طلبي عليه")}
+                    </span>
+                  </label>
+                  <div>
+                    <Label className="text-xs">{t("Lebanese number for the delivery courier (optional)", "رقم لبناني لشركة التوصيل (اختياري)")}</Label>
+                    <div className="mt-1 flex items-center rounded-xl border border-input bg-background h-10">
+                      <span className="px-3 text-sm text-muted-foreground border-r border-input" dir="ltr">+961</span>
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        dir="ltr"
+                        value={altLebanesePhone}
+                        onChange={(e) => { setAltLebanesePhone(stripTrunkZero(e.target.value).slice(0, 8)); setPhoneError(""); }}
+                        placeholder="7x xxx xxx"
+                        className="w-full px-3 bg-transparent text-sm h-10 outline-none"
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {t("Our courier delivers inside Lebanon and may need a local number to reach you.", "شركة التوصيل تعمل داخل لبنان وقد تحتاج رقماً محلياً للتواصل معك.")}
+                    </p>
+                  </div>
+                </div>
+              )}
               <div>
                 <Label style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>{t("Email (optional — for order updates)", "البريد الإلكتروني (اختياري — لتحديثات الطلب)")}</Label>
                 <Input value={form.email} onChange={e => updateForm("email", e.target.value)} type="email" inputMode="email" autoComplete="email" className={`mt-1.5 ${inputClass}`} style={{ direction: "ltr" }} />

@@ -4,8 +4,9 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { ArrowRight, MessageCircle, Printer, Phone } from "lucide-react";
+import { ArrowRight, MessageCircle, Printer, Phone, Pencil, Plus, Minus, Trash2 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { getSizes, sizeId } from "@/lib/pricing";
 import { useAdminLanguage } from "@/components/admin/useAdminLanguage";
 
 const FLOW = ["pending", "confirmed", "processing", "shipped", "delivered"];
@@ -61,6 +62,104 @@ export default function OrderDetail() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+
+  // ── Edit-items mode (pending / confirmed / processing only) ─────────────
+  const canEdit = ["pending", "confirmed", "processing"].includes(order?.status);
+  const [editing, setEditing] = useState(false);
+  const [editItems, setEditItems] = useState([]);
+  const [editProducts, setEditProducts] = useState([]);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState("");
+  const [editShortages, setEditShortages] = useState([]);
+  const [addSearch, setAddSearch] = useState("");
+
+  const startEditing = async () => {
+    setEditErr("");
+    setEditShortages([]);
+    setAddSearch("");
+    setEditItems((order.items || []).map((it, i) => ({
+      key: `old-${i}`,
+      product_id: it.product_id,
+      product_name: it.product_name,
+      product_name_ar: it.product_name_ar,
+      image_url: it.image_url || "",
+      size_id: it.size_id || "",
+      size_label: it.size_label || "",
+      size_label_ar: it.size_label_ar || "",
+      quantity: it.quantity,
+      price: Number(it.price) || 0,
+      keepPrice: true, // preserve agreed price unless the size changes
+    })));
+    setEditing(true);
+    try {
+      const prods = await base44.entities.Product.list("-created_date", 500);
+      setEditProducts(prods || []);
+    } catch { setEditProducts([]); }
+  };
+
+  const patchEditItem = (key, patch) =>
+    setEditItems(prev => prev.map(it => (it.key === key ? { ...it, ...patch } : it)));
+
+  const addProductToEdit = (product) => {
+    const sizes = getSizes(product);
+    const first = sizes[0];
+    setEditItems(prev => [...prev, {
+      key: `new-${Date.now()}-${Math.random()}`,
+      product_id: product.id,
+      product_name: product.name || "",
+      product_name_ar: product.name_ar || "",
+      image_url: product.image_url || (product.images?.[0] || ""),
+      size_id: first ? sizeId(first) : "",
+      size_label: first?.label || "",
+      size_label_ar: first?.label_ar || "",
+      quantity: 1,
+      price: null, // server resolves the storefront-effective price
+      keepPrice: false,
+    }]);
+    setAddSearch("");
+  };
+
+  const editSubtotal = editItems.reduce((sum, it) => sum + (Number(it.price) || 0) * it.quantity, 0);
+  const hasUnresolvedPrice = editItems.some(it => it.price == null);
+
+  const saveEdit = async () => {
+    setEditErr("");
+    setEditShortages([]);
+    if (editItems.length === 0) {
+      setEditErr(t("An order needs at least one item — cancel the order instead.", "الطلب يحتاج منتجاً واحداً على الأقل — ألغِ الطلب بدلاً من ذلك."));
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const res = await base44.functions.editOrder({
+        order_id: order.id,
+        items: editItems.map(it => ({
+          product_id: it.product_id,
+          size_id: it.size_id || "",
+          size_label: it.size_label || "",
+          size_label_ar: it.size_label_ar || "",
+          quantity: it.quantity,
+          ...(it.keepPrice && it.price != null ? { price: it.price } : {}),
+        })),
+      });
+      const payload = res?.data || res;
+      if (!payload?.ok) {
+        setEditShortages(payload?.shortages || []);
+        setEditErr(payload?.error || t("Not enough stock — nothing was changed.", "لا يوجد مخزون كافٍ — لم يتغير شيء."));
+        return;
+      }
+      const fresh = await base44.entities.Order.filter({ id: order.id }).then(([o]) => o);
+      setOrder(fresh);
+      setEditing(false);
+      toast({ title: t("Order updated — stock adjusted automatically", "تم تحديث الطلب — عُدّل المخزون تلقائياً") });
+    } catch (e) {
+      const data = e?.data?.data || e?.data || {};
+      setEditShortages(data.shortages || []);
+      setEditErr(data.error || e.message || t("Edit failed — nothing was changed.", "فشل التعديل — لم يتغير شيء."));
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   useEffect(() => {
     base44.entities.Order.filter({ id }).then(([o]) => { setOrder(o); }).finally(() => setLoading(false));
@@ -230,9 +329,129 @@ export default function OrderDetail() {
         {/* Order Items */}
         <Card className="border-0 shadow-sm lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-black">{t("Products", "المنتجات")}</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-black">{t("Products", "المنتجات")}</CardTitle>
+              {canEdit && !editing && (
+                <Button onClick={startEditing} variant="outline" size="sm" className="gap-1.5 rounded-xl">
+                  <Pencil className="w-3.5 h-3.5" />
+                  {t("Edit Items", "تعديل المنتجات")}
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
+            {editing && (
+              <div className="space-y-3 mb-4">
+                <div className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+                  {editItems.map((it) => {
+                    const product = editProducts.find(p => p.id === it.product_id);
+                    const sizes = product ? getSizes(product) : [];
+                    return (
+                      <div key={it.key} className="p-3 space-y-2">
+                        <div className="flex items-center gap-3">
+                          {it.image_url && <img src={it.image_url} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-sm truncate">{lang === "ar" ? (it.product_name_ar || it.product_name) : (it.product_name || it.product_name_ar)}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {it.price != null ? `${formatPrice(it.price)} ${t("each", "للقطعة")}` : t("price auto-resolves on save", "السعر يُحسب عند الحفظ")}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => patchEditItem(it.key, { quantity: Math.max(1, it.quantity - 1) })}
+                              className="p-1 rounded-lg bg-gray-100 hover:bg-gray-200"><Minus className="w-3.5 h-3.5" /></button>
+                            <span className="w-7 text-center text-sm font-black">{it.quantity}</span>
+                            <button onClick={() => patchEditItem(it.key, { quantity: Math.min(999, it.quantity + 1) })}
+                              className="p-1 rounded-lg bg-gray-100 hover:bg-gray-200"><Plus className="w-3.5 h-3.5" /></button>
+                          </div>
+                          <span className="text-sm font-black w-16 text-right">{it.price != null ? formatPrice(it.price * it.quantity) : "—"}</span>
+                          <button onClick={() => setEditItems(prev => prev.filter(x => x.key !== it.key))}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                        {sizes.length > 0 && (
+                          <select
+                            value={it.size_id}
+                            onChange={e => {
+                              const sz = sizes.find(x => sizeId(x) === e.target.value);
+                              // Size change invalidates the old price — let the
+                              // server re-resolve the storefront-effective price.
+                              patchEditItem(it.key, { size_id: e.target.value, size_label: sz?.label || "", size_label_ar: sz?.label_ar || "", price: null, keepPrice: false });
+                            }}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white max-w-full">
+                            {sizes.map(sz => (
+                              <option key={sizeId(sz)} value={sizeId(sz)}>
+                                {(lang === "ar" ? (sz.label_ar || sz.label) : (sz.label || sz.label_ar))}
+                                {sz.stock_quantity != null ? ` — ${Math.max(0, Number(sz.stock_quantity || 0) - Number(sz.qty_reserved || 0))} ${t("available", "متوفر")}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {editItems.length === 0 && (
+                    <p className="p-6 text-sm text-muted-foreground text-center">{t("All items removed — add one below, or cancel the order instead.", "أزلت كل المنتجات — أضف واحداً أدناه أو ألغِ الطلب.")}</p>
+                  )}
+                </div>
+
+                {/* Add item */}
+                <div className="relative">
+                  <input
+                    value={addSearch}
+                    onChange={e => setAddSearch(e.target.value)}
+                    placeholder={t("Search products to add…", "ابحث عن منتجات لإضافتها…")}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white"
+                  />
+                  {addSearch.trim() && (
+                    <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {editProducts
+                        .filter(pr => (pr.name || "").toLowerCase().includes(addSearch.trim().toLowerCase()) || (pr.name_ar || "").includes(addSearch.trim()))
+                        .slice(0, 8)
+                        .map(pr => (
+                          <button key={pr.id} onClick={() => addProductToEdit(pr)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 text-sm">
+                            <span className="flex-1 truncate">{lang === "ar" ? (pr.name_ar || pr.name) : (pr.name || pr.name_ar)}</span>
+                            <span className="text-xs text-muted-foreground">{formatPrice(pr.price)}</span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Totals hint */}
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{t("New subtotal", "المجموع الفرعي الجديد")}</span>
+                    <span className="font-bold">{hasUnresolvedPrice ? "≈ " : ""}{formatPrice(editSubtotal)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {order.total_override
+                      ? t("This order has a manually overridden total — it stays as set.", "هذا الطلب له إجمالي مخصص يدوياً — سيبقى كما هو.")
+                      : t("Discount and delivery fee are kept; the total recalculates on save.", "يُحتفظ بالخصم ورسوم التوصيل؛ يُعاد حساب الإجمالي عند الحفظ.")}
+                  </p>
+                </div>
+
+                {editErr && <p className="text-xs text-red-600">{editErr}</p>}
+                {editShortages.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1">
+                    <p className="text-xs font-bold text-red-600">{t("Not enough stock — the order was NOT changed:", "لا يوجد مخزون كافٍ — لم يتغير الطلب:")}</p>
+                    {editShortages.map((sh, i) => (
+                      <p key={i} className="text-xs text-red-600">• {lang === "ar" ? (sh.product_name_ar || sh.product_name) : (sh.product_name || sh.product_name_ar)}: {sh.available} {t("available", "متوفر")}, {sh.requested} {t("needed", "مطلوب")}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button onClick={saveEdit} disabled={editSaving} className="rounded-xl">
+                    {editSaving ? t("Saving…", "جارٍ الحفظ…") : t("Save Changes", "حفظ التغييرات")}
+                  </Button>
+                  <Button onClick={() => setEditing(false)} disabled={editSaving} variant="outline" className="rounded-xl">
+                    {t("Discard", "إلغاء")}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">{t("Stock adjusts automatically: freed items go back on sale, new items are taken out — all-or-nothing.", "يُعدَّل المخزون تلقائياً: المنتجات المحررة تعود للبيع والجديدة تُخصم — كل شيء أو لا شيء.")}</p>
+              </div>
+            )}
+            {!editing && (
             <div className="space-y-3 mb-4">
               {(order.items || []).map((item, i) => {
                 const sz = lang === "ar" ? (item.size_label_ar || item.size_label) : (item.size_label || item.size_label_ar);
@@ -257,6 +476,7 @@ export default function OrderDetail() {
                 );
               })}
             </div>
+            )}
             <div className="border-t border-gray-100 pt-3 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{t("Subtotal", "المجموع الفرعي")}</span>

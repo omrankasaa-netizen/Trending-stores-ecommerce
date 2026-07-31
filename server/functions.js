@@ -10,7 +10,7 @@ import {
 import {
   resolveLineItem, decrementStockPatch, restockStockPatch,
   reserveStockPatch, releaseReservationPatch, commitReservedStockPatch,
-  getSizes, sizeId, computeManualOrderTotals,
+  getSizes, sizeId, findSize, computeManualOrderTotals,
 } from '../src/lib/pricing.js';
 
 // ─── Brand / email constants ────────────────────────────────────────────────
@@ -343,7 +343,7 @@ export function reserveOrderStock(orderData = {}) {
       const qty = Math.max(1, Number(item.quantity) || 1);
       const result = reserveStockPatch(product, item.size_id, qty);
       if (!result.ok) {
-        shortages.push({
+        editShortages.push({
           product_id: pid,
           product_name: item.product_name || product.name || '',
           product_name_ar: item.product_name_ar || product.name_ar || '',
@@ -1101,9 +1101,184 @@ async function tiktokTrackEvent({ event_name, event_id, source_url, contents, va
   });
 }
 
+// ─── Edit order items (admin) ────────────────────────────────────────────────
+// Replaces the embedded items[] of an order after placement (size swaps,
+// quantity changes, removals, additions) and moves stock atomically to match.
+// Mode follows the order's lifecycle flags:
+//   • stock_committed           → restock old lines to on-hand, sell new ones.
+//   • stock_reserved (pending)  → release old holds, hold the new lines.
+//   • neither (legacy)          → validate only; confirm applies stock later.
+// New lines are applied through the SAME validated helpers as checkout
+// (reserveStockPatch validates availability against the post-release state;
+// committed orders immediately convert each hold via commitReservedStockPatch),
+// all inside ONE db.transaction — any shortage throws and rolls everything
+// back, so an edit either fully applies or leaves the order untouched.
+// Totals are recomputed with computeManualOrderTotals, preserving the order's
+// discount, delivery fee, and (when set) the manual total override.
+const ORDER_EDIT_LOCKED_STATUSES = ['shipped', 'delivered', 'cancelled', 'returned'];
+
+function editOrder({ order_id, items: newItems, note }, user) {
+  const order = getRecord('Order', order_id);
+  if (!order) return { _status: 404, error: 'Order not found' };
+  if (ORDER_EDIT_LOCKED_STATUSES.includes(order.status) || order.stock_restocked || order.stock_released) {
+    return { _status: 409, ok: false, error: `Orders that are ${order.status} can no longer be edited` };
+  }
+  if (!Array.isArray(newItems) || newItems.length === 0) {
+    return { _status: 400, error: 'items must be a non-empty array (cancel the order to remove everything)' };
+  }
+  for (const it of newItems) {
+    if (!it.product_id) return { _status: 400, error: 'Every item needs a product_id' };
+    const q = Number(it.quantity);
+    if (!Number.isInteger(q) || q < 1 || q > 999) {
+      return { _status: 400, error: 'Every item needs an integer quantity of at least 1' };
+    }
+  }
+
+  const reference = `${order.order_number || order_id} edited`;
+  const actor = user?.email || 'admin';
+  const mode = order.stock_committed ? 'commit' : order.stock_reserved ? 'reserve' : 'none';
+  const oldItems = orderItems(order);
+  const globalPct = getGlobalMarkupPct();
+
+  const editShortages = [];
+  const runEdit = db.transaction(() => {
+    // Pass 1 — undo the stock effect of every current line.
+    for (const item of oldItems) {
+      const pid = item.product_id || item.id;
+      if (!pid) continue;
+      const product = getRecord('Product', pid);
+      if (!product) continue;
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      if (mode === 'commit') {
+        const patch = restockStockPatch(product, item.size_id, qty);
+        if (patch) {
+          updateRecord('Product', pid, patch);
+          recordStockMovement({
+            product, product_id: pid,
+            size_id: item.size_id || '', size_label: item.size_label || '', size_label_ar: item.size_label_ar || '',
+            delta: qty, balance: balanceFromStockPatch(patch, item.size_id),
+            reason: 'cancel_restock', reference, actor,
+          });
+        }
+      } else if (mode === 'reserve') {
+        const result = releaseReservationPatch(product, item.size_id, qty);
+        if (result?.patch) {
+          updateRecord('Product', pid, result.patch);
+          recordStockMovement({
+            product, product_id: pid,
+            size_id: item.size_id || '', size_label: item.size_label || '', size_label_ar: item.size_label_ar || '',
+            delta: qty, balance: result.balance,
+            reason: 'release', reference, actor,
+          });
+        }
+      }
+    }
+
+    // Pass 2+3 — validate AND apply the new lines (validated reserve; a
+    // committed order then converts each hold into a sale right away).
+    const docs = [];
+    for (const it of newItems) {
+      const qty = Math.max(1, Math.floor(Number(it.quantity) || 1));
+      const product = getRecord('Product', it.product_id);
+      if (!product) {
+        editShortages.push({ product_name: it.product_name || it.product_id, requested: qty, available: 0 });
+        throw new Error('INSUFFICIENT_STOCK');
+      }
+      const r = reserveStockPatch(product, it.size_id || '', qty);
+      if (!r.ok) {
+        editShortages.push({
+          product_id: it.product_id,
+          product_name: product.name || '',
+          product_name_ar: product.name_ar || '',
+          size_label: it.size_label || '',
+          size_label_ar: it.size_label_ar || '',
+          requested: r.requested ?? qty,
+          available: r.available ?? 0,
+        });
+        throw new Error('INSUFFICIENT_STOCK'); // rolls back pass 1 too
+      }
+      if (r.patch) {
+        updateRecord('Product', it.product_id, r.patch);
+        recordStockMovement({
+          product, product_id: it.product_id,
+          size_id: it.size_id || '', size_label: it.size_label || '', size_label_ar: it.size_label_ar || '',
+          delta: -qty, balance: r.balance,
+          reason: 'reserve', reference, actor,
+        });
+      }
+      let fresh = r.patch ? getRecord('Product', it.product_id) : product;
+      if (mode === 'commit') {
+        const c = commitReservedStockPatch(fresh, it.size_id || '', qty);
+        if (c?.patch) {
+          updateRecord('Product', it.product_id, c.patch);
+          recordStockMovement({
+            product: fresh, product_id: it.product_id,
+            size_id: it.size_id || '', size_label: it.size_label || '', size_label_ar: it.size_label_ar || '',
+            delta: -qty, balance: c.balance,
+            reason: 'sale', reference, actor,
+          });
+          fresh = getRecord('Product', it.product_id);
+        }
+      }
+
+      // Build the stored line doc (same shape as OrderCreate). A client-sent
+      // price wins (keeps previously agreed pricing); otherwise resolve the
+      // storefront-effective unit price (size + tiers + global markup).
+      const resolved = resolveLineItem(fresh, { size_id: it.size_id || '', quantity: qty }, globalPct);
+      const sizeObj = findSize(fresh, it.size_id);
+      const clientPrice = Number(it.price);
+      const price = Number.isFinite(clientPrice) && clientPrice >= 0 ? Math.round(clientPrice * 100) / 100 : resolved.unit_price;
+      docs.push({
+        product_id: it.product_id,
+        product_name: fresh.name || '',
+        product_name_ar: fresh.name_ar || '',
+        image_url: fresh.image_url || (Array.isArray(fresh.images) ? fresh.images[0] : '') || '',
+        size_id: it.size_id || '',
+        size_label: sizeObj?.label || it.size_label || '',
+        size_label_ar: sizeObj?.label_ar || it.size_label_ar || '',
+        offer_min_quantity: null,
+        offer_label: '',
+        offer_label_ar: '',
+        free_delivery: !!fresh.free_delivery,
+        quantity: qty,
+        price,
+      });
+    }
+
+    const totals = computeManualOrderTotals({
+      items: docs,
+      discount_type: order.discount_type || 'fixed',
+      discount_value: Number(order.discount_value) || 0,
+      delivery_fee: Number(order.delivery_fee) || 0,
+      total_override: !!order.total_override,
+      total: order.total_override ? Number(order.total) || 0 : null,
+    });
+
+    updateRecord('Order', order_id, {
+      items: docs,
+      subtotal: totals.subtotal,
+      discount: totals.discount,
+      delivery_fee: totals.delivery_fee,
+      total: totals.total,
+    });
+    return { items: docs.length, subtotal: totals.subtotal, total: totals.total };
+  });
+
+  try {
+    const result = runEdit();
+    return { ok: true, ...result };
+  } catch (e) {
+    if (e?.message === 'INSUFFICIENT_STOCK') {
+      return { _status: 409, ok: false, shortages: editShortages, error: 'Insufficient stock for this edit — nothing was changed' };
+    }
+    throw e;
+  }
+}
+
 const REGISTRY = {
   commitStock,
   cancelOrder,
+  editOrder,
   metaTrackPurchase,
   metaTrackEvent,
   tiktokTrackPurchase,
@@ -1146,6 +1321,7 @@ const GUARDS = {
   tiktokTrackPurchase: 'public',
   tiktokTrackEvent: 'public',
   cancelOrder: 'admin',
+  editOrder: 'admin',
   getMarkupConfig: 'admin',
   saveMarkupConfig: 'admin',
   getMyOrders: 'auth',
