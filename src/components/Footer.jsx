@@ -212,6 +212,12 @@ export default function Footer() {
             </Link>
           </div>
           <div className={`flex items-center gap-4 flex-wrap ${isRTL ? "flex-row-reverse" : ""}`}>
+            <a href="https://ops-shift.com" target="_blank" rel="noopener"
+              className="hover:text-primary-foreground transition-colors"
+              style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
+              {t("Developed for", "طُوِّر لصالح")} Trending Store {t("by", "من")}{" "}
+              <span className="font-semibold tracking-tight">OPS<span className="text-[#00d4c8] font-light">/</span>SHFT</span>
+            </a>
             <Link to="/about" className="hover:text-primary-foreground transition-colors" style={{ fontFamily: isRTL ? "'Cairo', sans-serif" : undefined }}>
               {t("About", "من نحن")}
             </Link>
