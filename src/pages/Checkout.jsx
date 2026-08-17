@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/useLanguage";
 import CountryCodeSelect from "@/components/checkout/CountryCodeSelect";
-import { DEFAULT_COUNTRY, findCountry, validateNationalNumber, toE164, stripTrunkZero } from "@/lib/countryCodes";
+import { DEFAULT_COUNTRY, findCountry, validateNationalNumber, validateLebaneseMobile, toE164, stripTrunkZero } from "@/lib/countryCodes";
 import { useCart } from "@/components/useCart";
 import { useSiteSettings } from "@/components/useSiteSettings";
 import { useAuth } from "@/lib/AuthContext";
@@ -238,11 +238,18 @@ export default function Checkout() {
     const activeCountry = findCountry(phoneCountry) || findCountry(DEFAULT_COUNTRY);
     const phoneCheck = validateNationalNumber(activeCountry, form.phone);
     if (!phoneCheck.ok) {
-      const lenMsg = phoneCheck.min === phoneCheck.max ? `${phoneCheck.min}` : `${phoneCheck.min}–${phoneCheck.max}`;
-      setPhoneError(t(
-        `Please enter a valid ${activeCountry.name} number (${lenMsg} digits after +${activeCountry.dial})`,
-        `يرجى إدخال رقم صحيح (${lenMsg} أرقام بعد +${activeCountry.dial})`
-      ));
+      if (activeCountry.iso === "LB") {
+        setPhoneError(t(
+          "Please enter a valid Lebanese mobile number (03, 70, 71, 76, 78, 79 or 81 — e.g. 03123456 or 70123456).",
+          "يرجى إدخال رقم خليوي لبناني صحيح (03 أو 70 أو 71 أو 76 أو 78 أو 79 أو 81 — مثال: 03123456 أو 70123456)."
+        ));
+      } else {
+        const lenMsg = phoneCheck.min === phoneCheck.max ? `${phoneCheck.min}` : `${phoneCheck.min}–${phoneCheck.max}`;
+        setPhoneError(t(
+          `Please enter a valid ${activeCountry.name} number (${lenMsg} digits after +${activeCountry.dial})`,
+          `يرجى إدخال رقم صحيح (${lenMsg} أرقام بعد +${activeCountry.dial})`
+        ));
+      }
       setLoading(false);
       return;
     }
@@ -255,10 +262,10 @@ export default function Checkout() {
       setLoading(false);
       return;
     }
-    if (altLebanesePhone.trim() && !/^\d{8}$/.test(stripTrunkZero(altLebanesePhone))) {
+    if (altLebanesePhone.trim() && !validateLebaneseMobile(altLebanesePhone).ok) {
       setPhoneError(t(
-        "The Lebanese courier number must be 8 digits (e.g. 70123456).",
-        "الرقم اللبناني لشركة التوصيل يجب أن يتكون من 8 أرقام (مثال: 70123456)."
+        "The Lebanese courier number must be a valid mobile (03, 70, 71, 76, 78, 79 or 81).",
+        "رقم التوصيل اللبناني يجب أن يكون رقم خليوي صحيح (03 أو 70 أو 71 أو 76 أو 78 أو 79 أو 81)."
       ));
       setLoading(false);
       return;
@@ -479,7 +486,7 @@ export default function Checkout() {
                       value={form.phone}
                       onChange={e => {
                         const active = findCountry(phoneCountry) || findCountry(DEFAULT_COUNTRY);
-                        updateForm("phone", stripTrunkZero(e.target.value).slice(0, active.len[1]));
+                        updateForm("phone", e.target.value.replace(/\D/g, "").slice(0, active.iso === "LB" ? 9 : active.len[1]));
                         setPhoneError("");
                       }}
                       required
@@ -515,7 +522,7 @@ export default function Checkout() {
                         inputMode="tel"
                         dir="ltr"
                         value={altLebanesePhone}
-                        onChange={(e) => { setAltLebanesePhone(stripTrunkZero(e.target.value).slice(0, 8)); setPhoneError(""); }}
+                        onChange={(e) => { setAltLebanesePhone(e.target.value.replace(/\D/g, "").slice(0, 9)); setPhoneError(""); }}
                         placeholder="7x xxx xxx"
                         className="w-full px-3 bg-transparent text-sm h-10 outline-none"
                       />
